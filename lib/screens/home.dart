@@ -5,6 +5,36 @@ import '../services/classic_bluetooth_service.dart';
 import '../services/device_service.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
+// PALETTE  (Blue + White premium theme)
+// ═══════════════════════════════════════════════════════════════════════════
+
+class _P {
+  // Blues
+  static const Color blue1     = Color(0xFF2563EB); // deep blue
+  static const Color blue2     = Color(0xFF3B82F6); // mid blue
+  static const Color blue3     = Color(0xFF60A5FA); // light blue
+  static const Color blueLight = Color(0xFFEFF6FF); // tinted bg card
+  static const Color blueMid   = Color(0xFFDBEAFE); // progress bg
+
+  // Backgrounds
+  static const Color bgPage    = Color(0xFFF5F8FF); // overall page
+  static const Color cardWhite = Color(0xFFFFFFFF); // card surface
+
+  // Text
+  static const Color textPrimary   = Color(0xFF0F172A);
+  static const Color textSecondary = Color(0xFF64748B);
+  static const Color textHint      = Color(0xFFCBD5E1);
+
+  // Status
+  static const Color green  = Color(0xFF22C55E);
+  static const Color red    = Color(0xFFEF4444);
+  static const Color orange = Color(0xFFF97316);
+
+  // Shadow
+  static const Color shadow = Color(0x1A2563EB);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // HOME SCREEN
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -18,15 +48,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
-
-  // ── Palette ────────────────────────────────────────────────────
-  static const Color _teal1 = Color(0xFF07B5AF);
-  static const Color _teal2 = Color(0xFF13C4BC);
-  static const Color _teal3 = Color(0xFF7DD8D6);
-  static const Color _bg1   = Color(0xFF051E1D);
-  static const Color _bg2   = Color(0xFF073330);
-  static const Color _surface = Color(0xFF0C2E2C);
+  late Animation<double>   _pulseAnimation;
 
   @override
   void initState() {
@@ -46,51 +68,37 @@ class _HomeScreenState extends State<HomeScreen>
     super.dispose();
   }
 
-  // ── Battery colour ─────────────────────────────────────────────
   Color _batteryColor(dynamic battery) {
     final pct = (battery is num) ? battery.toDouble() : 0.0;
-    if (pct >= 60) return const Color(0xFF4CAF82);
-    if (pct >= 30) return const Color(0xFFFFB946);
-    return const Color(0xFFFF5757);
+    if (pct >= 60) return _P.green;
+    if (pct >= 30) return _P.orange;
+    return _P.red;
   }
 
-  // ══════════════════════════════════════════════════════════════
   @override
   Widget build(BuildContext context) {
-    final bluetooth    = context.watch<ClassicBluetoothService>();
+    final bluetooth     = context.watch<ClassicBluetoothService>();
     final deviceService = context.watch<DeviceService>();
 
-    // ── Sync device state (original logic) ──────────────────────
+    // ── Sync device state (original logic unchanged) ────────────
     if (bluetooth.connectedDevices.isNotEmpty) {
       final device = bluetooth.connectedDevices.first;
-      deviceService.selectedDevice   = device;
-      deviceService.temperature      = device.temperature;
-      deviceService.battery          = device.battery;
-      deviceService.setTemperature   = device.setTemperature;
+      deviceService.selectedDevice    = device;
+      deviceService.temperature       = device.temperature;
+      deviceService.battery           = device.battery;
+      deviceService.setTemperature    = device.setTemperature;
       deviceService.isDeviceConnected = true;
     }
 
     return Scaffold(
-      backgroundColor: _bg1,
-      extendBodyBehindAppBar: true,
+      backgroundColor: _P.bgPage,
       appBar: _PremiumAppBar(isConnected: deviceService.isDeviceConnected),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF051E1D), Color(0xFF073330), Color(0xFF082E2C)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: SafeArea(
-          child: deviceService.selectedDevice == null
-              ? const _NoDeviceView()
-              : _DashboardLayout(
-            deviceService:   deviceService,
-            pulseAnimation:  _pulseAnimation,
-            batteryColor:    _batteryColor(deviceService.battery),
-          ),
-        ),
+      body: deviceService.selectedDevice == null
+          ? const _NoDeviceView()
+          : _DashboardLayout(
+        deviceService:  deviceService,
+        pulseAnimation: _pulseAnimation,
+        batteryColor:   _batteryColor(deviceService.battery),
       ),
     );
   }
@@ -105,30 +113,51 @@ class _PremiumAppBar extends StatelessWidget implements PreferredSizeWidget {
   const _PremiumAppBar({required this.isConnected});
 
   @override
-  Size get preferredSize => const Size.fromHeight(56);
+  Size get preferredSize => const Size.fromHeight(64);
 
   @override
   Widget build(BuildContext context) {
     return AppBar(
-      backgroundColor: Colors.transparent,
+      backgroundColor: _P.cardWhite,
       elevation: 0,
       centerTitle: false,
       titleSpacing: 20,
+      surfaceTintColor: Colors.transparent,
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(1),
+        child: Container(
+          height: 1,
+          color: const Color(0xFFE2E8F0),
+        ),
+      ),
       title: Row(
         children: [
+          // App icon
           Container(
-            width: 34,
-            height: 34,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF13C4BC), Color(0xFF07B5AF)],
+                colors: [_P.blue2, _P.blue1],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x403B82F6),
+                  blurRadius: 10,
+                  offset: Offset(0, 4),
+                ),
+              ],
             ),
-            child: const Icon(Icons.wifi_tethering_rounded,
-                color: Colors.white, size: 18),
+            child: const Icon(
+              Icons.wifi_tethering_rounded,
+              color: Colors.white,
+              size: 20,
+            ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -136,18 +165,18 @@ class _PremiumAppBar extends StatelessWidget implements PreferredSizeWidget {
               Text(
                 "Smart Pot",
                 style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
+                  color: _P.textPrimary,
+                  fontSize: 17,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: 0.3,
+                  letterSpacing: -0.3,
                 ),
               ),
               Text(
                 "Control Dashboard",
                 style: TextStyle(
-                  color: Colors.white38,
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w400,
+                  color: _P.textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
@@ -157,7 +186,7 @@ class _PremiumAppBar extends StatelessWidget implements PreferredSizeWidget {
       actions: [
         Padding(
           padding: const EdgeInsets.only(right: 16),
-          child: _StatusChip(isConnected: isConnected),
+          child: _StatusBadge(isConnected: isConnected),
         ),
       ],
     );
@@ -165,7 +194,7 @@ class _PremiumAppBar extends StatelessWidget implements PreferredSizeWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// NO DEVICE
+// NO DEVICE VIEW
 // ═══════════════════════════════════════════════════════════════════════════
 
 class _NoDeviceView extends StatelessWidget {
@@ -178,28 +207,31 @@ class _NoDeviceView extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
+              color: _P.blueLight,
               shape: BoxShape.circle,
-              color: Colors.white.withOpacity(0.05),
-              border: Border.all(color: Colors.white12, width: 1.5),
+              border: Border.all(color: _P.blueMid, width: 1.5),
             ),
-            child: const Icon(Icons.bluetooth_disabled_rounded,
-                size: 40, color: Colors.white30),
+            child: const Icon(
+              Icons.bluetooth_disabled_rounded,
+              size: 40,
+              color: _P.blue3,
+            ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           const Text(
             "No Device Selected",
             style: TextStyle(
-              color: Colors.white70,
-              fontSize: 16,
+              color: _P.textPrimary,
+              fontSize: 17,
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           const Text(
             "Connect a device to get started",
-            style: TextStyle(color: Colors.white30, fontSize: 12.5),
+            style: TextStyle(color: _P.textSecondary, fontSize: 13),
           ),
         ],
       ),
@@ -208,13 +240,13 @@ class _NoDeviceView extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MAIN DASHBOARD LAYOUT  (no scroll — Column fills SafeArea)
+// DASHBOARD LAYOUT
 // ═══════════════════════════════════════════════════════════════════════════
 
 class _DashboardLayout extends StatelessWidget {
-  final DeviceService deviceService;
-  final Animation<double> pulseAnimation;
-  final Color batteryColor;
+  final DeviceService      deviceService;
+  final Animation<double>  pulseAnimation;
+  final Color              batteryColor;
 
   const _DashboardLayout({
     required this.deviceService,
@@ -226,66 +258,73 @@ class _DashboardLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // ── Section 1: Device selector ─────────────────────────
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: _DeviceDropdown(deviceService: deviceService),
-        ),
-
-        const SizedBox(height: 14),
-
-        // ── Section 2: Stat chips row ──────────────────────────
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              Expanded(
-                child: _StatChip(
-                  label: "Live Temp",
-                  value: "${deviceService.temperature}°",
-                  icon: Icons.thermostat_rounded,
-                  accent: const Color(0xFFFF7043),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _StatChip(
-                  label: "Battery",
-                  value: "${deviceService.battery}%",
-                  icon: Icons.battery_charging_full_rounded,
-                  accent: batteryColor,
-                  trailing: _MiniProgressBar(
-                    value: ((deviceService.battery is num)
-                        ? (deviceService.battery as num).toDouble()
-                        : 0.0)
-                        .clamp(0.0, 100.0) /
-                        100,
-                    color: batteryColor,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 16),
-
-        // ── Section 3: Circular temperature dial (Expanded) ────
+        // ── Scrollable body ──────────────────────────────────────
         Expanded(
-          child: Center(
-            child: _ArcTemperatureDial(
-              currentTemp: (deviceService.temperature is num)
-                  ? (deviceService.temperature as num).toDouble()
-                  : 0.0,
-              setTemp: deviceService.setTemperature,
-              onChanged: (val) => deviceService.sendSetTemperature(val),
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Connected Device Card ──────────────────────
+                _DeviceCard(deviceService: deviceService),
+
+                const SizedBox(height: 16),
+
+                // ── Stats Row ──────────────────────────────────
+                Row(
+                  children: [
+                    Expanded(
+                      child: _StatCard(
+                        label:  "Live Temp",
+                        value:  "${deviceService.temperature}°C",
+                        icon:   Icons.thermostat_rounded,
+                        accent: _P.orange,
+                        bgColor: const Color(0xFFFFF7ED),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _BatteryCard(
+                        battery:      deviceService.battery,
+                        batteryColor: batteryColor,
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+
+                // ── Section Label ─────────────────────────────
+                // const Text(
+                //   "Temperature Control",
+                //   style: TextStyle(
+                //     color:      _P.textPrimary,
+                //     fontSize:   15,
+                //     fontWeight: FontWeight.w700,
+                //     letterSpacing: -0.2,
+                //   ),
+                // ),
+                // const SizedBox(height: 4),
+                // const Text(
+                //   "Drag the ring to set target temperature",
+                //   style: TextStyle(color: _P.textSecondary, fontSize: 12),
+                // ),
+                //
+                // const SizedBox(height: 16),
+
+                // ── Temperature Dial Card ─────────────────────
+
+              ],
             ),
           ),
         ),
 
-        // ── Section 4: Power panel (fixed bottom) ──────────────
+        _DialCard(deviceService: deviceService),
+
+        // ── Power Panel (pinned bottom) ──────────────────────────
         _BottomPowerPanel(
-          isOn: deviceService.isOn,
+          isOn:           deviceService.isOn,
           pulseAnimation: pulseAnimation,
           onTap: () async {
             if (deviceService.selectedDevice == null) return;
@@ -298,72 +337,97 @@ class _DashboardLayout extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// STAT CHIP
+// DEVICE CARD
 // ═══════════════════════════════════════════════════════════════════════════
 
-class _StatChip extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color accent;
-  final Widget? trailing;
-
-  const _StatChip({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.accent,
-    this.trailing,
-  });
+class _DeviceCard extends StatelessWidget {
+  final DeviceService deviceService;
+  const _DeviceCard({required this.deviceService});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0C2E2C),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.07), width: 1),
-      ),
+    return _ShadowCard(
       child: Row(
         children: [
+          // Blue Bluetooth icon
           Container(
-            padding: const EdgeInsets.all(7),
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
-              color: accent.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(9),
-            ),
-            child: Icon(icon, color: accent, size: 16),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: Colors.white38,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 0.4,
-                  ),
+              gradient: const LinearGradient(
+                colors: [_P.blue2, _P.blue1],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x353B82F6),
+                  blurRadius: 12,
+                  offset: Offset(0, 4),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    height: 1.1,
-                  ),
-                ),
-                if (trailing != null) ...[
-                  const SizedBox(height: 5),
-                  trailing!,
-                ],
               ],
+            ),
+            child: const Icon(
+              Icons.bluetooth_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
+          ),
+
+          const SizedBox(width: 14),
+
+          // Device info
+          Expanded(
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<ClassicDeviceModel>(
+                value: deviceService.bluetoothService.connectedDevices
+                    .contains(deviceService.selectedDevice)
+                    ? deviceService.selectedDevice
+                    : null,
+                isExpanded: true,
+                hint: const Text(
+                  "Select Device",
+                  style: TextStyle(color: _P.textSecondary, fontSize: 14),
+                ),
+                dropdownColor: _P.cardWhite,
+                icon: const Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  color: _P.textSecondary,
+                  size: 22,
+                ),
+                style: const TextStyle(
+                  color:      _P.textPrimary,
+                  fontSize:   15,
+                  fontWeight: FontWeight.w700,
+                ),
+                items: deviceService.bluetoothService.connectedDevices
+                    .map((d) => DropdownMenuItem(
+                  value: d,
+                  child: Text(d.name),
+                ))
+                    .toList(),
+                onChanged: (d) {
+                  if (d != null) deviceService.selectDevice(d);
+                },
+              ),
+            ),
+          ),
+
+          // Status pill
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: _P.blueLight,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Text(
+              "Connected",
+              style: TextStyle(
+                color:      _P.blue1,
+                fontSize:   11,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -373,30 +437,160 @@ class _StatChip extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MINI PROGRESS BAR
+// STAT CARD  (Live Temp)
 // ═══════════════════════════════════════════════════════════════════════════
 
-class _MiniProgressBar extends StatelessWidget {
-  final double value;
-  final Color color;
-  const _MiniProgressBar({required this.value, required this.color});
+class _StatCard extends StatelessWidget {
+  final String  label;
+  final String  value;
+  final IconData icon;
+  final Color   accent;
+  final Color   bgColor;
+
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.accent,
+    required this.bgColor,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(4),
-      child: LinearProgressIndicator(
-        value: value,
-        minHeight: 4,
-        backgroundColor: Colors.white10,
-        valueColor: AlwaysStoppedAnimation<Color>(color),
+    return _ShadowCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Icon
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: accent, size: 18),
+          ),
+          const SizedBox(height: 12),
+          // Value
+          Text(
+            value,
+            style: const TextStyle(
+              color:      _P.textPrimary,
+              fontSize:   26,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+              height: 1.0,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              color:    _P.textSecondary,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ARC TEMPERATURE DIAL  (CustomPainter + GestureDetector)
+// BATTERY CARD
+// ═══════════════════════════════════════════════════════════════════════════
+
+class _BatteryCard extends StatelessWidget {
+  final dynamic battery;
+  final Color   batteryColor;
+  const _BatteryCard({required this.battery, required this.batteryColor});
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = (battery is num) ? (battery as num).toDouble() : 0.0;
+    return _ShadowCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Icon
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: batteryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              Icons.battery_charging_full_rounded,
+              color: batteryColor,
+              size: 18,
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Value
+          Text(
+            "${pct.toInt()}%",
+            style: const TextStyle(
+              color:      _P.textPrimary,
+              fontSize:   26,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+              height: 1.0,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            "Battery",
+            style: TextStyle(
+              color:    _P.textSecondary,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 10),
+          // Progress bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: pct.clamp(0.0, 100.0) / 100,
+              minHeight: 6,
+              backgroundColor: const Color(0xFFE2E8F0),
+              valueColor: AlwaysStoppedAnimation<Color>(batteryColor),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DIAL CARD  (wraps the arc temperature dial)
+// ═══════════════════════════════════════════════════════════════════════════
+
+class _DialCard extends StatelessWidget {
+  final DeviceService deviceService;
+  const _DialCard({required this.deviceService});
+
+  @override
+  Widget build(BuildContext context) {
+    return _ShadowCard(
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+      child: _ArcTemperatureDial(
+        currentTemp: (deviceService.temperature is num)
+            ? (deviceService.temperature as num).toDouble()
+            : 0.0,
+        setTemp: deviceService.setTemperature,
+        onChanged: (val) => deviceService.sendSetTemperature(val),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ARC TEMPERATURE DIAL  (custom painter — logic unchanged, colors updated)
 // ═══════════════════════════════════════════════════════════════════════════
 
 class _ArcTemperatureDial extends StatefulWidget {
@@ -415,9 +609,8 @@ class _ArcTemperatureDial extends StatefulWidget {
 }
 
 class _ArcTemperatureDialState extends State<_ArcTemperatureDial> {
-  static const double _minTemp = 0;
-  static const double _maxTemp = 1000;
-  // Arc spans 240° starting from 150° (bottom-left) going clockwise
+  static const double _minTemp    = 0;
+  static const double _maxTemp    = 1000;
   static const double _startAngle = 150 * pi / 180;
   static const double _sweepAngle = 240 * pi / 180;
 
@@ -426,37 +619,43 @@ class _ArcTemperatureDialState extends State<_ArcTemperatureDial> {
 
   void _handlePan(Offset localPos, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final angle  = atan2(localPos.dy - center.dy, localPos.dx - center.dx);
 
-    // Normalise angle to [0, 2π)
-    double a = angle < 0 ? angle + 2 * pi : angle;
+    final dx = localPos.dx - center.dx;
+    final dy = localPos.dy - center.dy;
 
-    // Distance from start of arc
-    double s = _startAngle;
-    double diff = a - s;
-    if (diff < 0) diff += 2 * pi;
+    double angle = atan2(dy, dx);
 
-    if (diff > _sweepAngle + 0.3) return; // outside arc, ignore
+    // Normalize angle (0 → 2π)
+    if (angle < 0) angle += 2 * pi;
 
-    final frac  = (diff / _sweepAngle).clamp(0.0, 1.0);
-    final value = _minTemp + frac * (_maxTemp - _minTemp);
+    // Convert to dial range
+    double start = _startAngle;
+    double end = _startAngle + _sweepAngle;
+
+    // Clamp angle inside arc
+    if (angle < start) angle = start;
+    if (angle > end) angle = end;
+
+    final fraction = (angle - start) / _sweepAngle;
+
+    final value = _minTemp + fraction * (_maxTemp - _minTemp);
+
     widget.onChanged(value);
   }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (ctx, constraints) {
-      final size = Size(
-        constraints.maxWidth.clamp(0.0, 280),
-        constraints.maxWidth.clamp(0.0, 280),
-      );
+      final side = constraints.maxWidth.clamp(0.0, 280.0);
+      final size = Size(side, side);
 
       return GestureDetector(
+        onPanStart: (d) => _handlePan(d.localPosition, size),
         onPanUpdate: (d) => _handlePan(d.localPosition, size),
         onTapDown:   (d) => _handlePan(d.localPosition, size),
         child: SizedBox(
-          width:  size.width,
-          height: size.height,
+          width:  side,
+          height: side,
           child: CustomPaint(
             painter: _DialPainter(
               fraction:    _fraction,
@@ -476,7 +675,7 @@ class _ArcTemperatureDialState extends State<_ArcTemperatureDial> {
   }
 }
 
-// ── Custom painter ─────────────────────────────────────────────────────────
+// ── Dial Painter ───────────────────────────────────────────────────────────
 
 class _DialPainter extends CustomPainter {
   final double fraction;
@@ -496,33 +695,36 @@ class _DialPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final outerR = size.width / 2 - 10;
-    final trackW = 14.0;
+    const trackW = 16.0;
     final trackR = outerR - trackW / 2;
     final rect   = Rect.fromCircle(center: center, radius: trackR);
 
     // ── Track background ───────────────────────────────────────
-    final trackPaint = Paint()
-      ..color   = Colors.white.withOpacity(0.06)
-      ..style   = PaintingStyle.stroke
-      ..strokeWidth = trackW
-      ..strokeCap   = StrokeCap.round;
-    canvas.drawArc(rect, _startAngle, _sweepAngle, false, trackPaint);
+    canvas.drawArc(
+      rect, _startAngle, _sweepAngle, false,
+      Paint()
+        ..color       = const Color(0xFFE2E8F0)
+        ..style       = PaintingStyle.stroke
+        ..strokeWidth = trackW
+        ..strokeCap   = StrokeCap.round,
+    );
 
-    // ── Filled arc ─────────────────────────────────────────────
+    // ── Filled arc (blue gradient) ─────────────────────────────
     if (fraction > 0) {
-      final gradient = SweepGradient(
+      final grad = SweepGradient(
         startAngle: _startAngle,
         endAngle:   _startAngle + _sweepAngle * fraction,
-        colors: const [Color(0xFF07B5AF), Color(0xFF13C4BC), Color(0xFF7DD8D6)],
+        colors: const [Color(0xFF3B82F6), Color(0xFF2563EB), Color(0xFF60A5FA)],
         stops: const [0.0, 0.6, 1.0],
       );
-      final fillPaint = Paint()
-        ..shader    = gradient.createShader(rect)
-        ..style     = PaintingStyle.stroke
-        ..strokeWidth = trackW
-        ..strokeCap   = StrokeCap.round;
       canvas.drawArc(
-          rect, _startAngle, _sweepAngle * fraction, false, fillPaint);
+        rect, _startAngle, _sweepAngle * fraction, false,
+        Paint()
+          ..shader      = grad.createShader(rect)
+          ..style       = PaintingStyle.stroke
+          ..strokeWidth = trackW
+          ..strokeCap   = StrokeCap.round,
+      );
     }
 
     // ── Thumb knob ─────────────────────────────────────────────
@@ -532,67 +734,67 @@ class _DialPainter extends CustomPainter {
       center.dy + trackR * sin(thumbAngle),
     );
 
-    // Outer glow
+    // Glow
     canvas.drawCircle(
-      thumbPos,
-      12,
+      thumbPos, 14,
       Paint()
-        ..color     = const Color(0xFF13C4BC).withOpacity(0.25)
-        ..style     = PaintingStyle.fill
+        ..color      = const Color(0x503B82F6)
+        ..style      = PaintingStyle.fill
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
     );
-    // White knob
-    canvas.drawCircle(thumbPos, 8,
+    // White ring
+    canvas.drawCircle(thumbPos, 10,
         Paint()..color = Colors.white..style = PaintingStyle.fill);
-    // Inner accent
-    canvas.drawCircle(thumbPos, 4,
-        Paint()..color = const Color(0xFF07B5AF)..style = PaintingStyle.fill);
+    // Blue fill
+    canvas.drawCircle(thumbPos, 7,
+        Paint()
+          ..shader = const LinearGradient(
+            colors: [Color(0xFF3B82F6), Color(0xFF2563EB)],
+          ).createShader(Rect.fromCircle(center: thumbPos, radius: 7))
+          ..style = PaintingStyle.fill);
 
     // ── Tick marks ─────────────────────────────────────────────
     final tickR  = outerR + 4;
-    final labelR = outerR + 16;
     for (int i = 0; i <= 10; i++) {
-      final a   = _startAngle + _sweepAngle * (i / 10);
+      final a       = _startAngle + _sweepAngle * (i / 10);
       final isMajor = i % 5 == 0;
-      final tl  = isMajor ? 10.0 : 5.0;
-      final p1  = Offset(center.dx + (tickR - tl) * cos(a),
+      final tl      = isMajor ? 10.0 : 5.0;
+      final p1      = Offset(center.dx + (tickR - tl) * cos(a),
           center.dy + (tickR - tl) * sin(a));
-      final p2  = Offset(center.dx + tickR * cos(a),
+      final p2      = Offset(center.dx + tickR * cos(a),
           center.dy + tickR * sin(a));
       canvas.drawLine(
         p1, p2,
         Paint()
-          ..color = isMajor
-              ? Colors.white.withOpacity(0.35)
-              : Colors.white.withOpacity(0.15)
-          ..strokeWidth = isMajor ? 2 : 1,
+          ..color       = isMajor ? const Color(0xFF94A3B8) : const Color(0xFFCBD5E1)
+          ..strokeWidth = isMajor ? 2.0 : 1.0,
       );
     }
 
     // ── Min / Max labels ───────────────────────────────────────
-    _drawLabel(canvas, center, labelR + 6, _startAngle, "0°");
-    _drawLabel(canvas, center, labelR + 6,
-        _startAngle + _sweepAngle, "1000°");
+    _drawLabel(canvas, center, tickR + 16, _startAngle, "0°");
+    _drawLabel(canvas, center, tickR + 16, _startAngle + _sweepAngle, "1000°");
   }
 
-  void _drawLabel(
-      Canvas canvas, Offset center, double r, double angle, String text) {
+  void _drawLabel(Canvas canvas, Offset center, double r, double angle, String text) {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
         style: const TextStyle(
-          color: Color(0xFF4A7A78),
-          fontSize: 9,
+          color:      Color(0xFF94A3B8),
+          fontSize:   9,
           fontWeight: FontWeight.w600,
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    final pos = Offset(
-      center.dx + r * cos(angle) - tp.width / 2,
-      center.dy + r * sin(angle) - tp.height / 2,
+    tp.paint(
+      canvas,
+      Offset(
+        center.dx + r * cos(angle) - tp.width  / 2,
+        center.dy + r * sin(angle) - tp.height / 2,
+      ),
     );
-    tp.paint(canvas, pos);
   }
 
   @override
@@ -602,7 +804,7 @@ class _DialPainter extends CustomPainter {
           old.setTemp != setTemp;
 }
 
-// ── Dial centre content ────────────────────────────────────────────────────
+// ── Dial Centre ────────────────────────────────────────────────────────────
 
 class _DialCenter extends StatelessWidget {
   final double currentTemp;
@@ -614,72 +816,83 @@ class _DialCenter extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text(
-          "SET TEMP",
-          style: TextStyle(
-            color: Colors.white30,
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 1.4,
+        // Label
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: _P.blueLight,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: const Text(
+            "SET TEMPERATURE",
+            style: TextStyle(
+              color:        _P.blue1,
+              fontSize:     9.5,
+              fontWeight:   FontWeight.w700,
+              letterSpacing: 1.2,
+            ),
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
+
+        // Big value
         RichText(
           text: TextSpan(
             children: [
               TextSpan(
                 text: "${setTemp.toInt()}",
                 style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 52,
+                  color:      _P.textPrimary,
+                  fontSize:   54,
                   fontWeight: FontWeight.w900,
-                  height: 1.0,
+                  height:     1.0,
+                  letterSpacing: -2,
                 ),
               ),
               const TextSpan(
                 text: "°C",
                 style: TextStyle(
-                  color: Color(0xFF13C4BC),
-                  fontSize: 22,
+                  color:      _P.blue2,
+                  fontSize:   22,
                   fontWeight: FontWeight.w700,
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 8),
+
+        const SizedBox(height: 10),
+
+        // Current temp pill
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
           decoration: BoxDecoration(
-            color: const Color(0xFF0C2E2C),
+            color: const Color(0xFFFFF7ED),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white10),
+            border: Border.all(color: const Color(0xFFFED7AA), width: 1),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Icon(Icons.thermostat_rounded,
-                  size: 12, color: Color(0xFFFF7043)),
+                  size: 12, color: _P.orange),
               const SizedBox(width: 4),
               Text(
-                "Now: $currentTemp°C",
+                "Now: ${currentTemp.toStringAsFixed(1)}°C",
                 style: const TextStyle(
-                  color: Colors.white54,
-                  fontSize: 11,
+                  color:      _P.orange,
+                  fontSize:   11.5,
                   fontWeight: FontWeight.w600,
                 ),
               ),
             ],
           ),
         ),
+
         const SizedBox(height: 6),
         const Text(
           "Drag the ring to adjust",
-          style: TextStyle(
-            color: Colors.white24,
-            fontSize: 10,
-            fontWeight: FontWeight.w400,
-          ),
+          style: TextStyle(color: _P.textHint, fontSize: 10.5),
         ),
       ],
     );
@@ -691,9 +904,9 @@ class _DialCenter extends StatelessWidget {
 // ═══════════════════════════════════════════════════════════════════════════
 
 class _BottomPowerPanel extends StatelessWidget {
-  final bool isOn;
+  final bool             isOn;
   final Animation<double> pulseAnimation;
-  final VoidCallback onTap;
+  final VoidCallback     onTap;
 
   const _BottomPowerPanel({
     required this.isOn,
@@ -704,54 +917,63 @@ class _BottomPowerPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      margin:  const EdgeInsets.fromLTRB(16, 0, 16, 20),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFF0C2E2C),
+        color: _P.cardWhite,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
           color: isOn
-              ? const Color(0xFF13C4BC).withOpacity(0.3)
-              : Colors.white.withOpacity(0.07),
-          width: 1,
+              ? _P.blue2.withOpacity(0.25)
+              : const Color(0xFFE2E8F0),
+          width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: isOn
-                ? const Color(0xFF07B5AF).withOpacity(0.18)
-                : Colors.black.withOpacity(0.3),
-            blurRadius: 20,
+            color: isOn ? _P.shadow : const Color(0x0D000000),
+            blurRadius: 24,
             offset: const Offset(0, -4),
           ),
         ],
       ),
       child: Row(
         children: [
-          // ── Left: status info ──────────────────────────────
+          // ── Left: Status info ──────────────────────────────
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  isOn ? "DEVICE ACTIVE" : "DEVICE STANDBY",
-                  style: TextStyle(
-                    color: isOn
-                        ? const Color(0xFF13C4BC)
-                        : Colors.white30,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.2,
-                  ),
+                Row(
+                  children: [
+                    Container(
+                      width: 8, height: 8,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isOn ? _P.green : const Color(0xFFCBD5E1),
+                        boxShadow: isOn
+                            ? [BoxShadow(color: _P.green.withOpacity(0.5), blurRadius: 6)]
+                            : [],
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                    Text(
+                      isOn ? "DEVICE ACTIVE" : "DEVICE STANDBY",
+                      style: TextStyle(
+                        color:      isOn ? _P.blue1 : _P.textSecondary,
+                        fontSize:   11.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 4),
                 Text(
-                  isOn
-                      ? "Tap power to turn off"
-                      : "Tap power to turn on",
+                  isOn ? "Tap power to turn off" : "Tap power to turn on",
                   style: const TextStyle(
-                    color: Colors.white24,
-                    fontSize: 11.5,
+                    color:    _P.textSecondary,
+                    fontSize: 12,
                   ),
                 ),
               ],
@@ -763,70 +985,59 @@ class _BottomPowerPanel extends StatelessWidget {
             onTap: onTap,
             child: AnimatedBuilder(
               animation: pulseAnimation,
-              builder: (_, __) {
-                return Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // Glow halo
-                    if (isOn)
-                      Opacity(
-                        opacity: pulseAnimation.value * 0.5,
-                        child: Container(
-                          width: 72,
-                          height: 72,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: const Color(0xFF13C4BC).withOpacity(0.25),
-                          ),
-                        ),
-                      ),
-
-                    // Button
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 350),
-                      curve: Curves.easeInOut,
-                      width: 58,
-                      height: 58,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: isOn
-                            ? const LinearGradient(
-                          colors: [
-                            Color(0xFF13C4BC),
-                            Color(0xFF07B5AF)
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        )
-                            : const LinearGradient(
-                          colors: [
-                            Color(0xFF142E2D),
-                            Color(0xFF0F2524)
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: isOn
-                                ? const Color(0xFF07B5AF).withOpacity(0.5)
-                                : Colors.black.withOpacity(0.4),
-                            blurRadius: isOn ? 20 : 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Center(
-                        child: Icon(
-                          Icons.power_settings_new_rounded,
-                          color: isOn ? Colors.white : Colors.white30,
-                          size: 26,
+              builder: (_, __) => Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Glow ring (only when ON)
+                  if (isOn)
+                    Opacity(
+                      opacity: pulseAnimation.value * 0.45,
+                      child: Container(
+                        width: 76, height: 76,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _P.blue2.withOpacity(0.2),
                         ),
                       ),
                     ),
-                  ],
-                );
-              },
+
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 350),
+                    curve:    Curves.easeInOut,
+                    width: 60, height: 60,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: isOn
+                          ? const LinearGradient(
+                        colors: [Color(0xFF3B82F6), Color(0xFF2563EB)],
+                        begin:  Alignment.topLeft,
+                        end:    Alignment.bottomRight,
+                      )
+                          : const LinearGradient(
+                        colors: [Color(0xFFF1F5F9), Color(0xFFE2E8F0)],
+                        begin:  Alignment.topLeft,
+                        end:    Alignment.bottomRight,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: isOn
+                              ? _P.blue2.withOpacity(0.45)
+                              : Colors.black.withOpacity(0.08),
+                          blurRadius: isOn ? 20 : 6,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Icon(
+                        Icons.power_settings_new_rounded,
+                        color: isOn ? Colors.white : const Color(0xFF94A3B8),
+                        size: 26,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -836,45 +1047,44 @@ class _BottomPowerPanel extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// STATUS CHIP
+// STATUS BADGE
 // ═══════════════════════════════════════════════════════════════════════════
 
-class _StatusChip extends StatelessWidget {
+class _StatusBadge extends StatelessWidget {
   final bool isConnected;
-  const _StatusChip({required this.isConnected});
+  const _StatusBadge({required this.isConnected});
 
   @override
   Widget build(BuildContext context) {
-    final color = isConnected ? const Color(0xFF4CAF82) : Colors.redAccent;
+    final color = isConnected ? _P.green : _P.red;
+    final bg    = isConnected ? const Color(0xFFF0FDF4) : const Color(0xFFFEF2F2);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: bg,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.4), width: 1),
+        border: Border.all(color: color.withOpacity(0.3), width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 6,
-            height: 6,
+            width: 6, height: 6,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: color,
               boxShadow: [
-                BoxShadow(color: color.withOpacity(0.7), blurRadius: 6),
+                BoxShadow(color: color.withOpacity(0.6), blurRadius: 5),
               ],
             ),
           ),
-          const SizedBox(width: 5),
+          const SizedBox(width: 6),
           Text(
             isConnected ? "Connected" : "Disconnected",
             style: TextStyle(
-              color: color,
-              fontSize: 11.5,
+              color:      color,
+              fontSize:   11.5,
               fontWeight: FontWeight.w600,
-              letterSpacing: 0.2,
             ),
           ),
         ],
@@ -884,71 +1094,42 @@ class _StatusChip extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// DEVICE DROPDOWN
+// REUSABLE SHADOW CARD
 // ═══════════════════════════════════════════════════════════════════════════
 
-class _DeviceDropdown extends StatelessWidget {
-  final DeviceService deviceService;
-  const _DeviceDropdown({required this.deviceService});
+class _ShadowCard extends StatelessWidget {
+  final Widget child;
+  final EdgeInsets padding;
+
+  const _ShadowCard({
+    required this.child,
+    this.padding = const EdgeInsets.all(16),
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      width: double.infinity,
+      padding: padding,
       decoration: BoxDecoration(
-        color: const Color(0xFF0C2E2C),
-        borderRadius: BorderRadius.circular(14),
-        border:
-        Border.all(color: Colors.white.withOpacity(0.08), width: 1),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF13C4BC), Color(0xFF07B5AF)],
-              ),
-              borderRadius: BorderRadius.circular(9),
-            ),
-            child: const Icon(Icons.bluetooth_rounded,
-                color: Colors.white, size: 16),
+        color: _P.cardWhite,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+        boxShadow: const [
+          BoxShadow(
+            color:       Color(0x0D2563EB),
+            blurRadius:  20,
+            offset:      Offset(0, 4),
+            spreadRadius: 0,
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<ClassicDeviceModel>(
-                value: deviceService.bluetoothService.connectedDevices
-                    .contains(deviceService.selectedDevice)
-                    ? deviceService.selectedDevice
-                    : null,
-                isExpanded: true,
-                hint: const Text(
-                  "Select Device",
-                  style: TextStyle(color: Colors.white38, fontSize: 13.5),
-                ),
-                dropdownColor: const Color(0xFF0A2A28),
-                icon: const Icon(Icons.keyboard_arrow_down_rounded,
-                    color: Colors.white38, size: 20),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w600,
-                ),
-                items: deviceService.bluetoothService.connectedDevices
-                    .map((device) => DropdownMenuItem(
-                  value: device,
-                  child: Text(device.name),
-                ))
-                    .toList(),
-                onChanged: (device) {
-                  if (device != null) deviceService.selectDevice(device);
-                },
-              ),
-            ),
+          BoxShadow(
+            color:       Color(0x08000000),
+            blurRadius:  6,
+            offset:      Offset(0, 1),
           ),
         ],
       ),
+      child: child,
     );
   }
 }

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
-import 'dart:convert';
 
 class ClassicDeviceModel {
   BluetoothDevice device;
@@ -10,11 +9,12 @@ class ClassicDeviceModel {
   String buffer = "";
   String name;
   String address;
-  double setTemperature = 0;
-  bool isConnected = false;
 
+  double setTemperature = 0;
   double temperature = 0;
   int battery = 0;
+
+  bool isConnected = false;
 
   ClassicDeviceModel({
     required this.device,
@@ -26,16 +26,20 @@ class ClassicDeviceModel {
 class ClassicBluetoothService extends ChangeNotifier {
   List<BluetoothDevice> bondedDevices = [];
   List<ClassicDeviceModel> connectedDevices = [];
-  String _buffer = "";
-  /// 🔍 GET PAIRED DEVICES
+
+  /// 🔍 GET PAIRED DEVICES (INSTANT)
   Future<void> getBondedDevices() async {
-    bondedDevices = await FlutterBluetoothSerial.instance.getBondedDevices();
-    notifyListeners();
+    try {
+      bondedDevices =
+      await FlutterBluetoothSerial.instance.getBondedDevices();
+      notifyListeners();
+    } catch (e) {
+      print("❌ Bonded devices error: $e");
+    }
   }
 
-  /// 🔗 CONNECT
+  /// 🔗 CONNECT DEVICE
   Future<void> connectDevice(BluetoothDevice device) async {
-    // Prevent duplicate connection
     if (connectedDevices.any((d) => d.address == device.address)) return;
 
     try {
@@ -51,27 +55,22 @@ class ClassicBluetoothService extends ChangeNotifier {
       model.connection = connection;
       model.isConnected = true;
 
-      // 🔥 ADD FIRST
       connectedDevices.add(model);
       notifyListeners();
 
-      // 🔥 SINGLE LISTENER ONLY (IMPORTANT)
+      // 🔥 SINGLE STREAM LISTENER
       connection.input?.listen(
             (data) {
           try {
             String chunk = utf8.decode(data);
-
-            // 🔥 Append safely
             model.buffer += chunk;
 
-
-
-// 🔥 Try to decode ONLY if full JSON exists
             int start = model.buffer.indexOf("{");
             int end = model.buffer.lastIndexOf("}");
 
             if (start != -1 && end != -1 && end > start) {
-              String jsonString = model.buffer.substring(start, end + 1);
+              String jsonString =
+              model.buffer.substring(start, end + 1);
 
               try {
                 print("📥 JSON: $jsonString");
@@ -80,21 +79,24 @@ class ClassicBluetoothService extends ChangeNotifier {
                 print("❌ JSON Parse Error: $e");
               }
 
-              // clear buffer after processing
               model.buffer = "";
+              notifyListeners();
             }
-            notifyListeners();
           } catch (e) {
             print("❌ Stream error: $e");
           }
+        },
+        onDone: () {
+          model.isConnected = false;
+          connectedDevices.removeWhere(
+                  (d) => d.address == model.address);
+          notifyListeners();
         },
       );
     } catch (e) {
       print("❌ Connection failed: $e");
     }
   }
-
-
 
   /// 🧠 PARSE DATA
   void parseData(ClassicDeviceModel model, String data) {
@@ -103,18 +105,11 @@ class ClassicBluetoothService extends ChangeNotifier {
 
       final jsonData = jsonDecode(data);
 
-      if (jsonData["temp"] != null) {
-        model.temperature = (jsonData["temp"] as num).toDouble();
-      }
-
-      if (jsonData["battery"] != null) {
-        model.battery = jsonData["battery"];
-      }
-
-      if (jsonData["set"] != null) {
-        model.setTemperature = (jsonData["set"] as num).toDouble();
-      }
-
+      model.temperature =
+          (jsonData["temp"] ?? 0).toDouble();
+      model.battery = jsonData["battery"] ?? 0;
+      model.setTemperature =
+          (jsonData["set"] ?? 0).toDouble();
     } catch (e) {
       print("❌ JSON Parse Error: $e");
     }
@@ -122,52 +117,81 @@ class ClassicBluetoothService extends ChangeNotifier {
 
   /// 🔘 SEND COMMAND
   Future<void> sendCommand(
-      ClassicDeviceModel model,
-      String command,
-      ) async {
-    model.connection?.output.add(utf8.encode(command));
-    await model.connection?.output.allSent;
-
-    print("📤 Sent: $command");
+      ClassicDeviceModel model, String command) async {
+    try {
+      model.connection?.output.add(utf8.encode(command));
+      await model.connection?.output.allSent;
+      print("📤 Sent: $command");
+    } catch (e) {
+      print("❌ Send failed: $e");
+    }
   }
+
   /// ❌ DISCONNECT
   Future<void> disconnectDevice(ClassicDeviceModel model) async {
-    await model.connection?.close();
-    connectedDevices.remove(model);
+    try {
+      await model.connection?.close();
+    } catch (_) {}
+
+    connectedDevices.removeWhere(
+            (d) => d.address == model.address);
+
     notifyListeners();
   }
 
-
+  /// 🔍 DISCOVERY SYSTEM
   StreamSubscription<BluetoothDiscoveryResult>? _discoveryStream;
 
   List<BluetoothDiscoveryResult> discoveredDevices = [];
-
   bool isDiscovering = false;
 
-  /// 🔍 START DISCOVERY (NEW DEVICES)
-  void startDiscovery() {
-    discoveredDevices.clear();
-    isDiscovering = true;
-    notifyListeners();
+  /// 🔍 START DISCOVERY (FIXED)
+  Future<void> startDiscovery() async {
+    try {
+      await _discoveryStream?.cancel();
 
-    _discoveryStream =
-        FlutterBluetoothSerial.instance.startDiscovery().listen((result) {
+      await getBondedDevices();
 
-          final existingIndex = discoveredDevices.indexWhere(
-                  (d) => d.device.address == result.device.address);
-
-          if (existingIndex >= 0) {
-            discoveredDevices[existingIndex] = result;
-          } else {
-            discoveredDevices.add(result);
-          }
-
-          notifyListeners();
-        });
-
-    _discoveryStream?.onDone(() {
-      isDiscovering = false;
+      discoveredDevices.clear();
+      isDiscovering = true;
       notifyListeners();
-    });
+
+      _discoveryStream =
+          FlutterBluetoothSerial.instance.startDiscovery().listen(
+                (result) {
+              final index = discoveredDevices.indexWhere(
+                      (d) => d.device.address == result.device.address);
+
+              if (index >= 0) {
+                discoveredDevices[index] = result;
+              } else {
+                discoveredDevices.add(result);
+              }
+
+              notifyListeners();
+            },
+          );
+
+      // 🔥 STOP AFTER 15–20 SEC
+      Future.delayed(const Duration(seconds: 15), () async {
+        await _discoveryStream?.cancel();
+        isDiscovering = false;
+        notifyListeners();
+      });
+
+    } catch (e) {
+      print("❌ Discovery error: $e");
+    }
+  }
+
+  /// 🔁 MANUAL REFRESH (CALL FROM UI)
+  Future<void> refreshDevices() async {
+    await startDiscovery();
+  }
+
+  @override
+  void dispose() {
+    _discoveryStream?.cancel();
+    super.dispose();
   }
 }
