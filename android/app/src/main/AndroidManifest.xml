@@ -9,7 +9,7 @@
         android:usesPermissionFlags="neverForLocation"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <application
-        android:label="pro"
+        android:label="BluSync"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

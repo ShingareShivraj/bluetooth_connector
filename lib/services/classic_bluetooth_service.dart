@@ -148,6 +148,22 @@ class ClassicBluetoothService extends ChangeNotifier {
   /// 🔍 START DISCOVERY (FIXED)
   Future<void> startDiscovery() async {
     try {
+      bool isEnabled =
+          await FlutterBluetoothSerial.instance.isEnabled ?? false;
+
+      if (!isEnabled) {
+        await FlutterBluetoothSerial.instance.requestEnable();
+        return;
+      }
+
+      // 👉 ADD THIS SAFETY CHECK
+      try {
+        await FlutterBluetoothSerial.instance.getBondedDevices();
+      } catch (e) {
+        print("❌ Permission not granted");
+        return; // 🚫 STOP instead of crash
+      }
+
       await _discoveryStream?.cancel();
 
       await getBondedDevices();
@@ -172,7 +188,6 @@ class ClassicBluetoothService extends ChangeNotifier {
             },
           );
 
-      // 🔥 STOP AFTER 15–20 SEC
       Future.delayed(const Duration(seconds: 15), () async {
         await _discoveryStream?.cancel();
         isDiscovering = false;

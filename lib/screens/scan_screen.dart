@@ -64,34 +64,14 @@ class _ScanScreenState extends State<ScanScreen> with TickerProviderStateMixin {
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
-    // ── original logic untouched ──────────────────────────────
-    @override
-    void initState() {
-      super.initState();
+    Future.microtask(() async {
+      bool granted = await PermissionManager.requestAll(context);
 
-      _pulseController = AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 1600),
-      )..repeat(reverse: true);
-
-      _rotateController = AnimationController(
-        vsync: this,
-        duration: const Duration(seconds: 3),
-      )..repeat();
-
-      _pulseAnim = Tween<double>(begin: 0.85, end: 1.15).animate(
-        CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-      );
-
-      Future.microtask(() async {
-        bool granted = await PermissionManager.requestAll(context);
-
-        if (granted) {
-          Provider.of<ClassicBluetoothService>(context, listen: false)
-              .startDiscovery();
-        }
-      });
-    }
+      if (granted) {
+        Provider.of<ClassicBluetoothService>(context, listen: false)
+            .startDiscovery();
+      }
+    });
   }
 
   @override
@@ -126,7 +106,12 @@ class _ScanScreenState extends State<ScanScreen> with TickerProviderStateMixin {
             child: RefreshIndicator(
               color: _P.blue2,
               backgroundColor: _P.cardWhite,
-              onRefresh: () async => bluetooth.startDiscovery(),
+              onRefresh: () async {
+                bool granted = await PermissionManager.requestAll(context);
+                if (granted) {
+                  bluetooth.startDiscovery();
+                }
+              },
               child: devices.isEmpty
                   ? _EmptyState(onScan: () => bluetooth.startDiscovery())
                   : ListView.builder(
@@ -580,6 +565,8 @@ class _DeviceCardState extends State<_DeviceCard>
     );
 
     try {
+      bool granted = await PermissionManager.requestAll(context);
+      if (!granted) return;
       await widget.onConnect();
       await Future.delayed(const Duration(seconds: 1));
       if (!mounted) return;
