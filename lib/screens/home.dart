@@ -86,7 +86,7 @@ class _HomeScreenState extends State<HomeScreen>
       deviceService.selectedDevice    = device;
       deviceService.temperature       = device.temperature;
       deviceService.battery           = device.battery;
-      deviceService.setTemperature    = device.setTemperature;
+      deviceService.espSetTemperature = device.setTemperature;
       deviceService.isDeviceConnected = true;
     }
 
@@ -582,7 +582,8 @@ class _DialCard extends StatelessWidget {
         currentTemp: (deviceService.temperature is num)
             ? (deviceService.temperature as num).toDouble()
             : 0.0,
-        setTemp: deviceService.setTemperature,
+        setTemp: deviceService.targetTemperature,
+        espSetTemp: deviceService.espSetTemperature,
         onChanged: (val) => deviceService.sendSetTemperature(val),
       ),
     );
@@ -597,11 +598,13 @@ class _ArcTemperatureDial extends StatefulWidget {
   final double currentTemp;
   final double setTemp;
   final ValueChanged<double> onChanged;
+  final double espSetTemp;
 
   const _ArcTemperatureDial({
     required this.currentTemp,
     required this.setTemp,
     required this.onChanged,
+    required this.espSetTemp,
   });
 
   @override
@@ -609,13 +612,19 @@ class _ArcTemperatureDial extends StatefulWidget {
 }
 
 class _ArcTemperatureDialState extends State<_ArcTemperatureDial> {
+  double localSetTemp = 0;
   static const double _minTemp    = 0;
   static const double _maxTemp    = 1000;
   static const double _startAngle = 150 * pi / 180;
   static const double _sweepAngle = 240 * pi / 180;
+  @override
+  void initState() {
+    super.initState();
 
+    localSetTemp = widget.setTemp;
+  }
   double get _fraction =>
-      (widget.setTemp - _minTemp) / (_maxTemp - _minTemp);
+      (localSetTemp - _minTemp) / (_maxTemp - _minTemp);
 
   void _handlePan(Offset localPos, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
@@ -640,7 +649,9 @@ class _ArcTemperatureDialState extends State<_ArcTemperatureDial> {
 
     final value = _minTemp + fraction * (_maxTemp - _minTemp);
 
-    widget.onChanged(value);
+    setState(() {
+      localSetTemp = value;
+    });
   }
 
   @override
@@ -650,9 +661,23 @@ class _ArcTemperatureDialState extends State<_ArcTemperatureDial> {
       final size = Size(side, side);
 
       return GestureDetector(
-        onPanStart: (d) => _handlePan(d.localPosition, size),
-        onPanUpdate: (d) => _handlePan(d.localPosition, size),
-        onTapDown:   (d) => _handlePan(d.localPosition, size),
+        onPanStart: (d) {
+          _handlePan(d.localPosition, size);
+        },
+
+        onPanUpdate: (d) {
+          _handlePan(d.localPosition, size);
+        },
+
+        onPanEnd: (_) {
+          widget.onChanged(localSetTemp);
+        },
+
+        onTapDown: (d) {
+          _handlePan(d.localPosition, size);
+
+          widget.onChanged(localSetTemp);
+        },
         child: SizedBox(
           width:  side,
           height: side,
@@ -665,7 +690,8 @@ class _ArcTemperatureDialState extends State<_ArcTemperatureDial> {
             child: Center(
               child: _DialCenter(
                 currentTemp: widget.currentTemp,
-                setTemp:     widget.setTemp,
+                setTemp: localSetTemp,
+                espSetTemp: widget.espSetTemp,
               ),
             ),
           ),
@@ -809,7 +835,8 @@ class _DialPainter extends CustomPainter {
 class _DialCenter extends StatelessWidget {
   final double currentTemp;
   final double setTemp;
-  const _DialCenter({required this.currentTemp, required this.setTemp});
+  final double espSetTemp;
+  const _DialCenter({required this.currentTemp, required this.setTemp, required this.espSetTemp,});
 
   @override
   Widget build(BuildContext context) {
@@ -893,6 +920,16 @@ class _DialCenter extends StatelessWidget {
         const Text(
           "Drag the ring to adjust",
           style: TextStyle(color: _P.textHint, fontSize: 10.5),
+        ),
+        const SizedBox(height: 6),
+
+        Text(
+          "ESP Set Temperature: ${espSetTemp.toInt()}°C",
+          style: const TextStyle(
+            color: _P.textSecondary,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ],
     );

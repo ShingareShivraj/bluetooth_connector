@@ -12,7 +12,8 @@ class DeviceService extends ChangeNotifier {
   ClassicDeviceModel? selectedDevice;
 
   bool isOn = false;
-  double setTemperature = 0;
+  double targetTemperature = 0;
+  double espSetTemperature = 0;
   double temperature = 0;
   int battery = 0;
   bool isDeviceConnected = false;
@@ -23,7 +24,8 @@ class DeviceService extends ChangeNotifier {
     if (device != null) {
       temperature = device.temperature;
       battery = device.battery;
-      setTemperature = device.setTemperature;
+      targetTemperature = device.setTemperature;
+      espSetTemperature = device.setTemperature;
     }
 
     notifyListeners();
@@ -62,7 +64,7 @@ class DeviceService extends ChangeNotifier {
   Future<void> sendSetTemperature(double value) async {
     if (selectedDevice == null) return;
 
-    setTemperature = value;
+    targetTemperature = value;
     notifyListeners();
 
     await bluetoothService.sendCommand(
