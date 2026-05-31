@@ -119,9 +119,15 @@ class ClassicBluetoothService extends ChangeNotifier {
   Future<void> sendCommand(
       ClassicDeviceModel model, String command) async {
     try {
-      model.connection?.output.add(utf8.encode(command));
+
+      model.connection?.output.add(
+        utf8.encode("$command\n"),
+      );
+
       await model.connection?.output.allSent;
-      print("📤 Sent: $command");
+
+      print("📤 Sent: $command\\n");
+
     } catch (e) {
       print("❌ Send failed: $e");
     }
