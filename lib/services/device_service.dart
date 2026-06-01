@@ -6,7 +6,7 @@ class DeviceService extends ChangeNotifier {
 
   DeviceService(this.bluetoothService) {
 
-
+    print("🔥 DEVICE SERVICE CREATED");
   }
 
   ClassicDeviceModel? selectedDevice;
@@ -53,7 +53,12 @@ class DeviceService extends ChangeNotifier {
   Future<void> togglePower() async {
     if (selectedDevice == null) return;
 
+    print("BEFORE TOGGLE = $isOn");
+
     isOn = !isOn;
+
+    print("AFTER TOGGLE = $isOn");
+
     notifyListeners();
 
     String command = isOn ? '{"power":1}' : '{"power":0}';

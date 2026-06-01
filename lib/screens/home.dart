@@ -89,6 +89,7 @@ class _HomeScreenState extends State<HomeScreen>
       deviceService.espSetTemperature = device.setTemperature;
       deviceService.isDeviceConnected = true;
     }
+    print("BUILD -> isOn = ${deviceService.isOn}");
 
     return Scaffold(
       backgroundColor: _P.bgPage,

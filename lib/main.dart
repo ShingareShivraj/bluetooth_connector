@@ -13,8 +13,11 @@ void main() {
         ChangeNotifierProxyProvider<ClassicBluetoothService, DeviceService>(
           create: (context) =>
               DeviceService(context.read<ClassicBluetoothService>()),
-          update: (context, bluetoothService, previous) =>
-              DeviceService(bluetoothService),
+
+          update: (context, bluetoothService, previous) {
+            return previous ??
+                DeviceService(bluetoothService);
+          },
         ),
       ],
       child: const MyApp(),
