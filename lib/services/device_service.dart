@@ -61,7 +61,7 @@ class DeviceService extends ChangeNotifier {
 
     notifyListeners();
 
-    String command = isOn ? '{"power":1}' : '{"power":0}';
+    String command = isOn ? '{"Power":1}' : '{"Power":0}';
 
     await bluetoothService.sendCommand(selectedDevice!, command);
   }
