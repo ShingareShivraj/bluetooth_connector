@@ -613,15 +613,15 @@ class _ArcTemperatureDial extends StatefulWidget {
 
 class _ArcTemperatureDialState extends State<_ArcTemperatureDial> {
   double localSetTemp = 0;
-  static const double _minTemp    = 0;
-  static const double _maxTemp    = 1000;
+  static const double _minTemp    = 45;
+  static const double _maxTemp    = 65;
   static const double _startAngle = 150 * pi / 180;
   static const double _sweepAngle = 240 * pi / 180;
   @override
   void initState() {
     super.initState();
 
-    localSetTemp = widget.setTemp;
+    localSetTemp = widget.setTemp.clamp(_minTemp, _maxTemp);
   }
   double get _fraction =>
       (localSetTemp - _minTemp) / (_maxTemp - _minTemp);
@@ -631,6 +631,19 @@ class _ArcTemperatureDialState extends State<_ArcTemperatureDial> {
 
     final dx = localPos.dx - center.dx;
     final dy = localPos.dy - center.dy;
+    final distance = sqrt(dx * dx + dy * dy);
+
+// Same values used by painter
+    final outerRadius = size.width / 2 - 10;
+    const trackWidth = 16.0;
+    final trackRadius = outerRadius - trackWidth / 2;
+
+// Allow touches only near ring
+    const touchTolerance = 25.0;
+
+    if ((distance - trackRadius).abs() > touchTolerance) {
+      return;
+    }
 
     double angle = atan2(dy, dx);
 
@@ -798,8 +811,8 @@ class _DialPainter extends CustomPainter {
     }
 
     // ── Min / Max labels ───────────────────────────────────────
-    _drawLabel(canvas, center, tickR + 16, _startAngle, "0°");
-    _drawLabel(canvas, center, tickR + 16, _startAngle + _sweepAngle, "1000°");
+    _drawLabel(canvas, center, tickR + 16, _startAngle, "45°");
+    _drawLabel(canvas, center, tickR + 16, _startAngle + _sweepAngle, "65°");
   }
 
   void _drawLabel(Canvas canvas, Offset center, double r, double angle, String text) {
