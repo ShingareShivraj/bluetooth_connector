@@ -10,11 +10,10 @@ void main() {
       providers: [
         ChangeNotifierProvider(create: (_) => ClassicBluetoothService()),
 
-        ChangeNotifierProxyProvider<ClassicBluetoothService, DeviceService>(
-          create: (context) =>
-              DeviceService(context.read<ClassicBluetoothService>()),
-          update: (context, bluetoothService, previous) =>
-              DeviceService(bluetoothService),
+        ChangeNotifierProvider<DeviceService>(
+          create: (context) => DeviceService(
+            context.read<ClassicBluetoothService>(),
+          ),
         ),
       ],
       child: const MyApp(),

@@ -12,14 +12,14 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> {
 
-  Timer? _timer; // ✅ store timer
+  Timer? _timer; //  store timer
 
   @override
   void initState() {
     super.initState();
 
     _timer = Timer(const Duration(seconds: 3), () {
-      if (!mounted) return; // ✅ prevent crash
+      if (!mounted) return;
 
       Navigator.pushReplacement(
         context,
