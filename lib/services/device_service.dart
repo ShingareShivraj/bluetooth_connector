@@ -26,6 +26,8 @@ class DeviceService extends ChangeNotifier {
       battery = device.battery;
       targetTemperature = device.setTemperature;
       espSetTemperature = device.setTemperature;
+
+      isOn = device.power == 1;
     }
 
     notifyListeners();
@@ -51,29 +53,19 @@ class DeviceService extends ChangeNotifier {
   }
 
   Future<void> togglePower() async {
-
     if (selectedDevice == null) return;
 
     if (isOn) {
-
-      isOn = false;
-
-
       await bluetoothService.sendCommand(
         selectedDevice!,
         '{"power":0}',
       );
     } else {
-
-      isOn = true;
-
       await bluetoothService.sendCommand(
         selectedDevice!,
         '{"power":1}',
       );
     }
-
-    notifyListeners();
   }
 
   Future<void> sendSetTemperature(double value) async {

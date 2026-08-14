@@ -13,6 +13,7 @@ class ClassicDeviceModel {
   double setTemperature = 0;
   double temperature = 0;
   int battery = 0;
+  int power=0;
 
   bool isConnected = false;
 
@@ -107,9 +108,15 @@ class ClassicBluetoothService extends ChangeNotifier {
 
       model.temperature =
           (jsonData["temp"] ?? 0).toDouble();
-      model.battery = jsonData["battery"] ?? 0;
+
+      model.battery =
+          jsonData["percentage"] ?? 0;
+
       model.setTemperature =
           (jsonData["set"] ?? 0).toDouble();
+
+      model.power =
+          jsonData["power"] ?? 0;
     } catch (e) {
       print("❌ JSON Parse Error: $e");
     }
@@ -119,7 +126,9 @@ class ClassicBluetoothService extends ChangeNotifier {
   Future<void> sendCommand(
       ClassicDeviceModel model, String command) async {
     try {
-      model.connection?.output.add(utf8.encode(command));
+      model.connection?.output.add(
+        utf8.encode("$command\n"),
+      );
       await model.connection?.output.allSent;
       print("📤 Sent: $command");
     } catch (e) {

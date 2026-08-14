@@ -88,6 +88,7 @@ class _HomeScreenState extends State<HomeScreen>
       deviceService.battery           = device.battery;
       deviceService.espSetTemperature = device.setTemperature;
       deviceService.isDeviceConnected = true;
+      deviceService.isOn = device.power == 1;
     }
 
     return Scaffold(
