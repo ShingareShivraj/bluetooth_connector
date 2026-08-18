@@ -164,7 +164,7 @@ class _PremiumAppBar extends StatelessWidget implements PreferredSizeWidget {
             mainAxisSize: MainAxisSize.min,
             children: const [
               Text(
-                "Smart Pot",
+                "Garam Mug",
                 style: TextStyle(
                   color: _P.textPrimary,
                   fontSize: 17,
