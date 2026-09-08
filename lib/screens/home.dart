@@ -1,238 +1,452 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import '../services/classic_bluetooth_service.dart';
+
 import '../services/device_service.dart';
+import '../services/theme_service.dart';
 
-// ═══════════════════════════════════════════════════════════════════════════
-// PALETTE  (Blue + White premium theme)
-// ═══════════════════════════════════════════════════════════════════════════
+class _C {
+  static bool isDark = false;
+  static Color page = Color(0xFFF5F8FF);
+  static Color card = Colors.white;
+  static final Color blue = Color(0xFF2563EB);
+  static final Color blueDark = Color(0xFF1D4ED8);
+  static Color blueSoft = Color(0xFFEFF6FF);
+  static Color text = Color(0xFF0F172A);
+  static Color muted = Color(0xFF64748B);
+  static Color border = Color(0xFFE2E8F0);
+  static final Color green = Color(0xFF16A34A);
+  static final Color orange = Color(0xFFF97316);
+  static final Color red = Color(0xFFEF4444);
 
-class _P {
-  // Blues
-  static const Color blue1     = Color(0xFF2563EB); // deep blue
-  static const Color blue2     = Color(0xFF3B82F6); // mid blue
-  static const Color blue3     = Color(0xFF60A5FA); // light blue
-  static const Color blueLight = Color(0xFFEFF6FF); // tinted bg card
-  static const Color blueMid   = Color(0xFFDBEAFE); // progress bg
-
-  // Backgrounds
-  static const Color bgPage    = Color(0xFFF5F8FF); // overall page
-  static const Color cardWhite = Color(0xFFFFFFFF); // card surface
-
-  // Text
-  static const Color textPrimary   = Color(0xFF0F172A);
-  static const Color textSecondary = Color(0xFF64748B);
-  static const Color textHint      = Color(0xFFCBD5E1);
-
-  // Status
-  static const Color green  = Color(0xFF22C55E);
-  static const Color red    = Color(0xFFEF4444);
-  static const Color orange = Color(0xFFF97316);
-
-  // Shadow
-  static const Color shadow = Color(0x1A2563EB);
+  static void applyTheme(bool dark) {
+    isDark = dark;
+    page = dark ? Color(0xFF080D18) : Color(0xFFF5F8FF);
+    card = dark ? Color(0xFF111827) : Colors.white;
+    blueSoft = dark ? Color(0xFF172554) : Color(0xFFEFF6FF);
+    text = dark ? Color(0xFFF8FAFC) : Color(0xFF0F172A);
+    muted = dark ? Color(0xFF94A3B8) : Color(0xFF64748B);
+    border = dark ? Color(0xFF263348) : Color(0xFFE2E8F0);
+  }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// HOME SCREEN
-// ═══════════════════════════════════════════════════════════════════════════
-
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  HomeScreen({super.key});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _pulseController;
-  late Animation<double>   _pulseAnimation;
+class _HomeScreenState extends State<HomeScreen> {
+  bool _powerBusy = false;
+  TemperatureMode? _modeBusy;
 
-  @override
-  void initState() {
-    super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1600),
-    )..repeat(reverse: true);
-    _pulseAnimation = Tween<double>(begin: 0.5, end: 1.0).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+  Future<void> _changePower(DeviceService service, bool enabled) async {
+    if (_powerBusy) return;
+    HapticFeedback.mediumImpact();
+    debugPrint('POWER SWITCH PRESSED: $enabled');
+    setState(() => _powerBusy = true);
+    final success = enabled
+        ? await service.turnOn()
+        : await service.turnOff();
+    debugPrint('POWER COMMAND RESULT: $success');
+    if (!mounted) return;
+    setState(() => _powerBusy = false);
+    if (!success) _showError(service.lastError);
+  }
+
+  Future<void> _selectMode(
+      DeviceService service,
+      TemperatureMode mode,
+      ) async {
+    if (_modeBusy != null) return;
+    HapticFeedback.selectionClick();
+    debugPrint(
+      'WARMTH MODE PRESSED: ${mode.label} -> TAR:${mode.espValue}',
     );
+    setState(() => _modeBusy = mode);
+    final success = await service.sendTemperatureMode(mode);
+    if (!mounted) return;
+    setState(() => _modeBusy = null);
+    if (!success) _showError(service.lastError);
   }
 
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    super.dispose();
+  Future<void> _disconnect(DeviceService service) async {
+    HapticFeedback.lightImpact();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Disconnect Garam Mug?'),
+        content: Text(
+          'Heating controls will be unavailable until you reconnect.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('Disconnect'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final success = await service.disconnectSelected();
+    if (!mounted) return;
+    if (success) {
+      Navigator.of(context).pop();
+    } else {
+      _showError(service.lastError);
+    }
   }
 
-  Color _batteryColor(dynamic battery) {
-    final pct = (battery is num) ? battery.toDouble() : 0.0;
-    if (pct >= 60) return _P.green;
-    if (pct >= 30) return _P.orange;
-    return _P.red;
+  void _showError(String? message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message ?? 'Something went wrong. Please try again.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
   }
 
   @override
   Widget build(BuildContext context) {
-    final bluetooth     = context.watch<ClassicBluetoothService>();
-    final deviceService = context.watch<DeviceService>();
-
-    // ── Sync device state (original logic unchanged) ────────────
-    if (bluetooth.connectedDevices.isNotEmpty) {
-      final device = bluetooth.connectedDevices.first;
-      deviceService.selectedDevice    = device;
-      deviceService.temperature       = device.temperature;
-      deviceService.battery           = device.battery;
-      deviceService.espSetTemperature = device.setTemperature;
-      deviceService.isDeviceConnected = true;
-      deviceService.isOn = device.power == 1;
-    }
+    _C.applyTheme(context.watch<ThemeService>().isDarkMode);
+    final service = context.watch<DeviceService>();
+    final device = service.selectedDevice;
 
     return Scaffold(
-      backgroundColor: _P.bgPage,
-      appBar: _PremiumAppBar(isConnected: deviceService.isDeviceConnected),
-      body: deviceService.selectedDevice == null
-          ? const _NoDeviceView()
-          : _DashboardLayout(
-        deviceService:  deviceService,
-        pulseAnimation: _pulseAnimation,
-        batteryColor:   _batteryColor(deviceService.battery),
+      backgroundColor: _C.page,
+      appBar: AppBar(
+        backgroundColor: _C.card,
+        foregroundColor: _C.text,
+        systemOverlayStyle:
+        _C.isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+        elevation: 0,
+        titleSpacing: 4,
+        leading: IconButton(
+          onPressed: () => Navigator.maybePop(context),
+          icon: Icon(Icons.arrow_back_rounded),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Garam Mug',
+              style: TextStyle(
+                color: _C.text,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            Text(
+              service.isDeviceConnected ? 'Connected and ready' : 'Disconnected',
+              style: TextStyle(
+                color: service.isDeviceConnected ? _C.green : _C.red,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          if (device != null)
+            IconButton(
+              tooltip: 'Disconnect',
+              onPressed: () => _disconnect(service),
+              icon: Icon(Icons.link_off_rounded, color: _C.muted),
+            ),
+          SizedBox(width: 8),
+        ],
+        bottom: PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: Divider(height: 1, color: _C.border),
+        ),
+      ),
+      body: device == null
+          ? _DisconnectedView(onBack: () => Navigator.maybePop(context))
+          : SafeArea(
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(16, 18, 16, 28),
+          children: [
+            _MugOverview(service: service),
+            SizedBox(height: 14),
+            _TemperatureModes(
+              selected: service.selectedTemperatureMode,
+              busy: _modeBusy,
+              onSelected: (mode) => _selectMode(service, mode),
+            ),
+            SizedBox(height: 14),
+            _PowerCard(
+              isOn: service.isOn,
+              isBusy: _powerBusy,
+              onChanged: (enabled) => _changePower(service, enabled),
+            ),
+            SizedBox(height: 14),
+            _SafetyNote(),
+          ],
+        ),
       ),
     );
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// APP BAR
-// ═══════════════════════════════════════════════════════════════════════════
+class _MugOverview extends StatelessWidget {
+  _MugOverview({required this.service});
 
-class _PremiumAppBar extends StatelessWidget implements PreferredSizeWidget {
-  final bool isConnected;
-  const _PremiumAppBar({required this.isConnected});
+  final DeviceService service;
 
-  @override
-  Size get preferredSize => const Size.fromHeight(64);
+  String get _status {
+    if (!service.isOn) return 'Heating is paused';
+    final difference = service.targetTemperature - service.temperature;
+    if (difference <= 1.5) return 'Ready for the perfect sip';
+    if (difference <= 4) return 'Almost at your selected warmth';
+    return 'Gently warming your coffee';
+  }
 
   @override
   Widget build(BuildContext context) {
-    return AppBar(
-      backgroundColor: _P.cardWhite,
-      elevation: 0,
-      centerTitle: false,
-      titleSpacing: 20,
-      surfaceTintColor: Colors.transparent,
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(1),
-        child: Container(
-          height: 1,
-          color: const Color(0xFFE2E8F0),
+    final liveTemperature = service.temperature;
+    final hasLiveTemperature = liveTemperature > 0;
+    final liveMode = TemperatureMode.fromTemperature(liveTemperature);
+    final battery = service.battery.clamp(0, 100);
+    final batteryColor =
+    battery >= 30 ? _C.green : battery >= 15 ? _C.orange : _C.red;
+
+    return Container(
+      padding: EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [_C.blue, _C.blueDark],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x332563EB),
+            blurRadius: 24,
+            offset: Offset(0, 10),
+          ),
+        ],
       ),
-      title: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // App icon
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [_P.blue2, _P.blue1],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x403B82F6),
-                  blurRadius: 10,
-                  offset: Offset(0, 4),
+          Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(.14),
+                  borderRadius: BorderRadius.circular(16),
                 ),
-              ],
-            ),
-            child: const Icon(
-              Icons.wifi_tethering_rounded,
-              color: Colors.white,
-              size: 20,
+                child: Icon(
+                  Icons.coffee_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+              SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      service.selectedDevice?.name ?? 'Garam Mug',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      _status,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(.78),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(.14),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      battery >= 85
+                          ? Icons.battery_full_rounded
+                          : Icons.battery_5_bar_rounded,
+                      color: batteryColor,
+                      size: 17,
+                    ),
+                    SizedBox(width: 4),
+                    Text(
+                      '$battery%',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 22),
+          Text(
+            'CURRENT COFFEE TEMPERATURE',
+            style: TextStyle(
+              color: Colors.white.withOpacity(.65),
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.4,
             ),
           ),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              Text(
-                "Garam Mug",
-                style: TextStyle(
-                  color: _P.textPrimary,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.3,
-                ),
+          SizedBox(height: 7),
+          Row(
+            children: [
+              Icon(
+                hasLiveTemperature
+                    ? _modeIcon(liveMode)
+                    : Icons.sync_rounded,
+                color: Colors.white,
+                size: 24,
               ),
+              SizedBox(width: 9),
               Text(
-                "Control Dashboard",
+                hasLiveTemperature
+                    ? '${liveTemperature.toStringAsFixed(1)}°C  •  ${liveMode.label}'
+                    : 'Waiting for mug status…',
                 style: TextStyle(
-                  color: _P.textSecondary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ],
           ),
         ],
       ),
-      actions: [
-        Padding(
-          padding: const EdgeInsets.only(right: 16),
-          child: _StatusBadge(isConnected: isConnected),
-        ),
-      ],
     );
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// NO DEVICE VIEW
-// ═══════════════════════════════════════════════════════════════════════════
+class _TemperatureModes extends StatelessWidget {
+  _TemperatureModes({
+    required this.selected,
+    required this.busy,
+    required this.onSelected,
+  });
 
-class _NoDeviceView extends StatelessWidget {
-  const _NoDeviceView();
+  final TemperatureMode selected;
+  final TemperatureMode? busy;
+  final ValueChanged<TemperatureMode> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    return _SurfaceCard(
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: _P.blueLight,
-              shape: BoxShape.circle,
-              border: Border.all(color: _P.blueMid, width: 1.5),
-            ),
-            child: const Icon(
-              Icons.bluetooth_disabled_rounded,
-              size: 40,
-              color: _P.blue3,
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            "No Device Selected",
+          Text(
+            'Choose your warmth',
             style: TextStyle(
-              color: _P.textPrimary,
+              color: _C.text,
               fontSize: 17,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 6),
-          const Text(
-            "Connect a device to get started",
-            style: TextStyle(color: _P.textSecondary, fontSize: 13),
+          SizedBox(height: 4),
+          Text(
+            'Select how you want your coffee to feel.',
+            style: TextStyle(color: _C.muted, fontSize: 12),
+          ),
+          SizedBox(height: 16),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: NeverScrollableScrollPhysics(),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              childAspectRatio: 1.55,
+            ),
+            itemCount: TemperatureMode.values.length,
+            itemBuilder: (context, index) {
+              final mode = TemperatureMode.values[index];
+              final isSelected = mode == selected;
+              final isBusy = mode == busy;
+              final color = _modeColor(mode);
+              return InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: busy == null ? () => onSelected(mode) : null,
+                child: AnimatedContainer(
+                  duration: Duration(milliseconds: 220),
+                  padding: EdgeInsets.all(13),
+                  decoration: BoxDecoration(
+                    color: isSelected ? color.withOpacity(.11) : _C.page,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isSelected ? color : _C.border,
+                      width: isSelected ? 1.7 : 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: color.withOpacity(.13),
+                          shape: BoxShape.circle,
+                        ),
+                        child: isBusy
+                            ? Padding(
+                          padding: EdgeInsets.all(10),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: color,
+                          ),
+                        )
+                            : Icon(_modeIcon(mode), color: color, size: 20),
+                      ),
+                      SizedBox(width: 9),
+                      Expanded(
+                        child: Text(
+                          mode.label,
+                          style: TextStyle(
+                            color: isSelected ? color : _C.text,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            height: 1.15,
+                          ),
+                        ),
+                      ),
+                      if (isSelected && !isBusy)
+                        Icon(Icons.check_circle_rounded, color: color, size: 17),
+                    ],
+                  ),
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -240,854 +454,103 @@ class _NoDeviceView extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// DASHBOARD LAYOUT
-// ═══════════════════════════════════════════════════════════════════════════
-
-class _DashboardLayout extends StatelessWidget {
-  final DeviceService      deviceService;
-  final Animation<double>  pulseAnimation;
-  final Color              batteryColor;
-
-  const _DashboardLayout({
-    required this.deviceService,
-    required this.pulseAnimation,
-    required this.batteryColor,
+class _PowerCard extends StatelessWidget {
+  _PowerCard({
+    required this.isOn,
+    required this.isBusy,
+    required this.onChanged,
   });
 
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        // ── Scrollable body ──────────────────────────────────────
-        Expanded(
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ── Connected Device Card ──────────────────────
-                _DeviceCard(deviceService: deviceService),
-
-                const SizedBox(height: 16),
-
-                // ── Stats Row ──────────────────────────────────
-                Row(
-                  children: [
-                    Expanded(
-                      child: _StatCard(
-                        label:  "Live Temp",
-                        value:  "${deviceService.temperature}°C",
-                        icon:   Icons.thermostat_rounded,
-                        accent: _P.orange,
-                        bgColor: const Color(0xFFFFF7ED),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _BatteryCard(
-                        battery:      deviceService.battery,
-                        batteryColor: batteryColor,
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 16),
-
-                // ── Section Label ─────────────────────────────
-                // const Text(
-                //   "Temperature Control",
-                //   style: TextStyle(
-                //     color:      _P.textPrimary,
-                //     fontSize:   15,
-                //     fontWeight: FontWeight.w700,
-                //     letterSpacing: -0.2,
-                //   ),
-                // ),
-                // const SizedBox(height: 4),
-                // const Text(
-                //   "Drag the ring to set target temperature",
-                //   style: TextStyle(color: _P.textSecondary, fontSize: 12),
-                // ),
-                //
-                // const SizedBox(height: 16),
-
-                // ── Temperature Dial Card ─────────────────────
-
-              ],
-            ),
-          ),
-        ),
-
-        _DialCard(deviceService: deviceService),
-
-        // ── Power Panel (pinned bottom) ──────────────────────────
-        _BottomPowerPanel(
-          isOn:           deviceService.isOn,
-          pulseAnimation: pulseAnimation,
-          onTap: () async {
-            if (deviceService.selectedDevice == null) return;
-            await deviceService.togglePower();
-          },
-        ),
-      ],
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// DEVICE CARD
-// ═══════════════════════════════════════════════════════════════════════════
-
-class _DeviceCard extends StatelessWidget {
-  final DeviceService deviceService;
-  const _DeviceCard({required this.deviceService});
+  final bool isOn;
+  final bool isBusy;
+  final ValueChanged<bool> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return _ShadowCard(
+    return _SurfaceCard(
       child: Row(
         children: [
-          // Blue Bluetooth icon
           Container(
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [_P.blue2, _P.blue1],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x353B82F6),
-                  blurRadius: 12,
-                  offset: Offset(0, 4),
-                ),
-              ],
-            ),
-            child: const Icon(
-              Icons.bluetooth_rounded,
-              color: Colors.white,
-              size: 22,
-            ),
-          ),
-
-          const SizedBox(width: 14),
-
-          // Device info
-          Expanded(
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<ClassicDeviceModel>(
-                value: deviceService.bluetoothService.connectedDevices
-                    .contains(deviceService.selectedDevice)
-                    ? deviceService.selectedDevice
-                    : null,
-                isExpanded: true,
-                hint: const Text(
-                  "Select Device",
-                  style: TextStyle(color: _P.textSecondary, fontSize: 14),
-                ),
-                dropdownColor: _P.cardWhite,
-                icon: const Icon(
-                  Icons.keyboard_arrow_down_rounded,
-                  color: _P.textSecondary,
-                  size: 22,
-                ),
-                style: const TextStyle(
-                  color:      _P.textPrimary,
-                  fontSize:   15,
-                  fontWeight: FontWeight.w700,
-                ),
-                items: deviceService.bluetoothService.connectedDevices
-                    .map((d) => DropdownMenuItem(
-                  value: d,
-                  child: Text(d.name),
-                ))
-                    .toList(),
-                onChanged: (d) {
-                  if (d != null) deviceService.selectDevice(d);
-                },
-              ),
-            ),
-          ),
-
-          // Status pill
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: _P.blueLight,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Text(
-              "Connected",
-              style: TextStyle(
-                color:      _P.blue1,
-                fontSize:   11,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// STAT CARD  (Live Temp)
-// ═══════════════════════════════════════════════════════════════════════════
-
-class _StatCard extends StatelessWidget {
-  final String  label;
-  final String  value;
-  final IconData icon;
-  final Color   accent;
-  final Color   bgColor;
-
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.accent,
-    required this.bgColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return _ShadowCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Icon
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: bgColor,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: accent, size: 18),
-          ),
-          const SizedBox(height: 12),
-          // Value
-          Text(
-            value,
-            style: const TextStyle(
-              color:      _P.textPrimary,
-              fontSize:   26,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.5,
-              height: 1.0,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: const TextStyle(
-              color:    _P.textSecondary,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// BATTERY CARD
-// ═══════════════════════════════════════════════════════════════════════════
-
-class _BatteryCard extends StatelessWidget {
-  final dynamic battery;
-  final Color   batteryColor;
-  const _BatteryCard({required this.battery, required this.batteryColor});
-
-  @override
-  Widget build(BuildContext context) {
-    final pct = (battery is num) ? (battery as num).toDouble() : 0.0;
-    return _ShadowCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Icon
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: batteryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
+              color: (isOn ? _C.green : _C.muted).withOpacity(.1),
+              shape: BoxShape.circle,
             ),
             child: Icon(
-              Icons.battery_charging_full_rounded,
-              color: batteryColor,
-              size: 18,
+              isOn ? Icons.local_fire_department_rounded : Icons.power_settings_new,
+              color: isOn ? _C.green : _C.muted,
             ),
           ),
-          const SizedBox(height: 12),
-          // Value
-          Text(
-            "${pct.toInt()}%",
-            style: const TextStyle(
-              color:      _P.textPrimary,
-              fontSize:   26,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.5,
-              height: 1.0,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            "Battery",
-            style: TextStyle(
-              color:    _P.textSecondary,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 10),
-          // Progress bar
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: pct.clamp(0.0, 100.0) / 100,
-              minHeight: 6,
-              backgroundColor: const Color(0xFFE2E8F0),
-              valueColor: AlwaysStoppedAnimation<Color>(batteryColor),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// DIAL CARD  (wraps the arc temperature dial)
-// ═══════════════════════════════════════════════════════════════════════════
-
-class _DialCard extends StatelessWidget {
-  final DeviceService deviceService;
-  const _DialCard({required this.deviceService});
-
-  @override
-  Widget build(BuildContext context) {
-    return _ShadowCard(
-      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-      child: _ArcTemperatureDial(
-        currentTemp: (deviceService.temperature is num)
-            ? (deviceService.temperature as num).toDouble()
-            : 0.0,
-        setTemp: deviceService.targetTemperature,
-        espSetTemp: deviceService.espSetTemperature,
-        onChanged: (val) => deviceService.sendSetTemperature(val),
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ARC TEMPERATURE DIAL  (custom painter — logic unchanged, colors updated)
-// ═══════════════════════════════════════════════════════════════════════════
-
-class _ArcTemperatureDial extends StatefulWidget {
-  final double currentTemp;
-  final double setTemp;
-  final ValueChanged<double> onChanged;
-  final double espSetTemp;
-
-  const _ArcTemperatureDial({
-    required this.currentTemp,
-    required this.setTemp,
-    required this.onChanged,
-    required this.espSetTemp,
-  });
-
-  @override
-  State<_ArcTemperatureDial> createState() => _ArcTemperatureDialState();
-}
-
-class _ArcTemperatureDialState extends State<_ArcTemperatureDial> {
-  double localSetTemp = 0;
-  static const double _minTemp    = 45;
-  static const double _maxTemp    = 65;
-  static const double _startAngle = 150 * pi / 180;
-  static const double _sweepAngle = 240 * pi / 180;
-  @override
-  void initState() {
-    super.initState();
-
-    localSetTemp = widget.setTemp.clamp(_minTemp, _maxTemp);
-  }
-  double get _fraction =>
-      (localSetTemp - _minTemp) / (_maxTemp - _minTemp);
-
-  void _handlePan(Offset localPos, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-
-    final dx = localPos.dx - center.dx;
-    final dy = localPos.dy - center.dy;
-    final distance = sqrt(dx * dx + dy * dy);
-
-// Same values used by painter
-    final outerRadius = size.width / 2 - 10;
-    const trackWidth = 16.0;
-    final trackRadius = outerRadius - trackWidth / 2;
-
-// Allow touches only near ring
-    const touchTolerance = 25.0;
-
-    if ((distance - trackRadius).abs() > touchTolerance) {
-      return;
-    }
-
-    double angle = atan2(dy, dx);
-
-    // Normalize angle (0 → 2π)
-    if (angle < 0) angle += 2 * pi;
-
-    // Convert to dial range
-    double start = _startAngle;
-    double end = _startAngle + _sweepAngle;
-
-    // Clamp angle inside arc
-    if (angle < start) angle = start;
-    if (angle > end) angle = end;
-
-    final fraction = (angle - start) / _sweepAngle;
-
-    final value = _minTemp + fraction * (_maxTemp - _minTemp);
-
-    setState(() {
-      localSetTemp = value;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (ctx, constraints) {
-      final side = constraints.maxWidth.clamp(0.0, 280.0);
-      final size = Size(side, side);
-
-      return GestureDetector(
-        onPanStart: (d) {
-          _handlePan(d.localPosition, size);
-        },
-
-        onPanUpdate: (d) {
-          _handlePan(d.localPosition, size);
-        },
-
-        onPanEnd: (_) {
-          widget.onChanged(localSetTemp);
-        },
-
-        onTapDown: (d) {
-          _handlePan(d.localPosition, size);
-
-          widget.onChanged(localSetTemp);
-        },
-        child: SizedBox(
-          width:  side,
-          height: side,
-          child: CustomPaint(
-            painter: _DialPainter(
-              fraction:    _fraction,
-              currentTemp: widget.currentTemp,
-              setTemp:     widget.setTemp,
-            ),
-            child: Center(
-              child: _DialCenter(
-                currentTemp: widget.currentTemp,
-                setTemp: localSetTemp,
-                espSetTemp: widget.espSetTemp,
-              ),
-            ),
-          ),
-        ),
-      );
-    });
-  }
-}
-
-// ── Dial Painter ───────────────────────────────────────────────────────────
-
-class _DialPainter extends CustomPainter {
-  final double fraction;
-  final double currentTemp;
-  final double setTemp;
-
-  _DialPainter({
-    required this.fraction,
-    required this.currentTemp,
-    required this.setTemp,
-  });
-
-  static const double _startAngle = 150 * pi / 180;
-  static const double _sweepAngle = 240 * pi / 180;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final outerR = size.width / 2 - 10;
-    const trackW = 16.0;
-    final trackR = outerR - trackW / 2;
-    final rect   = Rect.fromCircle(center: center, radius: trackR);
-
-    // ── Track background ───────────────────────────────────────
-    canvas.drawArc(
-      rect, _startAngle, _sweepAngle, false,
-      Paint()
-        ..color       = const Color(0xFFE2E8F0)
-        ..style       = PaintingStyle.stroke
-        ..strokeWidth = trackW
-        ..strokeCap   = StrokeCap.round,
-    );
-
-    // ── Filled arc (blue gradient) ─────────────────────────────
-    if (fraction > 0) {
-      final grad = SweepGradient(
-        startAngle: _startAngle,
-        endAngle:   _startAngle + _sweepAngle * fraction,
-        colors: const [Color(0xFF3B82F6), Color(0xFF2563EB), Color(0xFF60A5FA)],
-        stops: const [0.0, 0.6, 1.0],
-      );
-      canvas.drawArc(
-        rect, _startAngle, _sweepAngle * fraction, false,
-        Paint()
-          ..shader      = grad.createShader(rect)
-          ..style       = PaintingStyle.stroke
-          ..strokeWidth = trackW
-          ..strokeCap   = StrokeCap.round,
-      );
-    }
-
-    // ── Thumb knob ─────────────────────────────────────────────
-    final thumbAngle = _startAngle + _sweepAngle * fraction;
-    final thumbPos   = Offset(
-      center.dx + trackR * cos(thumbAngle),
-      center.dy + trackR * sin(thumbAngle),
-    );
-
-    // Glow
-    canvas.drawCircle(
-      thumbPos, 14,
-      Paint()
-        ..color      = const Color(0x503B82F6)
-        ..style      = PaintingStyle.fill
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
-    );
-    // White ring
-    canvas.drawCircle(thumbPos, 10,
-        Paint()..color = Colors.white..style = PaintingStyle.fill);
-    // Blue fill
-    canvas.drawCircle(thumbPos, 7,
-        Paint()
-          ..shader = const LinearGradient(
-            colors: [Color(0xFF3B82F6), Color(0xFF2563EB)],
-          ).createShader(Rect.fromCircle(center: thumbPos, radius: 7))
-          ..style = PaintingStyle.fill);
-
-    // ── Tick marks ─────────────────────────────────────────────
-    final tickR  = outerR + 4;
-    for (int i = 0; i <= 10; i++) {
-      final a       = _startAngle + _sweepAngle * (i / 10);
-      final isMajor = i % 5 == 0;
-      final tl      = isMajor ? 10.0 : 5.0;
-      final p1      = Offset(center.dx + (tickR - tl) * cos(a),
-          center.dy + (tickR - tl) * sin(a));
-      final p2      = Offset(center.dx + tickR * cos(a),
-          center.dy + tickR * sin(a));
-      canvas.drawLine(
-        p1, p2,
-        Paint()
-          ..color       = isMajor ? const Color(0xFF94A3B8) : const Color(0xFFCBD5E1)
-          ..strokeWidth = isMajor ? 2.0 : 1.0,
-      );
-    }
-
-    // ── Min / Max labels ───────────────────────────────────────
-    _drawLabel(canvas, center, tickR + 16, _startAngle, "45°");
-    _drawLabel(canvas, center, tickR + 16, _startAngle + _sweepAngle, "65°");
-  }
-
-  void _drawLabel(Canvas canvas, Offset center, double r, double angle, String text) {
-    final tp = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: const TextStyle(
-          color:      Color(0xFF94A3B8),
-          fontSize:   9,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    tp.paint(
-      canvas,
-      Offset(
-        center.dx + r * cos(angle) - tp.width  / 2,
-        center.dy + r * sin(angle) - tp.height / 2,
-      ),
-    );
-  }
-
-  @override
-  bool shouldRepaint(_DialPainter old) =>
-      old.fraction != fraction ||
-          old.currentTemp != currentTemp ||
-          old.setTemp != setTemp;
-}
-
-// ── Dial Centre ────────────────────────────────────────────────────────────
-
-class _DialCenter extends StatelessWidget {
-  final double currentTemp;
-  final double setTemp;
-  final double espSetTemp;
-  const _DialCenter({required this.currentTemp, required this.setTemp, required this.espSetTemp,});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Label
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: _P.blueLight,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: const Text(
-            "SET TEMPERATURE",
-            style: TextStyle(
-              color:        _P.blue1,
-              fontSize:     9.5,
-              fontWeight:   FontWeight.w700,
-              letterSpacing: 1.2,
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-
-        // Big value
-        RichText(
-          text: TextSpan(
-            children: [
-              TextSpan(
-                text: "${setTemp.toInt()}",
-                style: const TextStyle(
-                  color:      _P.textPrimary,
-                  fontSize:   54,
-                  fontWeight: FontWeight.w900,
-                  height:     1.0,
-                  letterSpacing: -2,
-                ),
-              ),
-              const TextSpan(
-                text: "°C",
-                style: TextStyle(
-                  color:      _P.blue2,
-                  fontSize:   22,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 10),
-
-        // Current temp pill
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFF7ED),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFFED7AA), width: 1),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.thermostat_rounded,
-                  size: 12, color: _P.orange),
-              const SizedBox(width: 4),
-              Text(
-                "Now: ${currentTemp.toStringAsFixed(1)}°C",
-                style: const TextStyle(
-                  color:      _P.orange,
-                  fontSize:   11.5,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 6),
-        const Text(
-          "Drag the ring to adjust",
-          style: TextStyle(color: _P.textHint, fontSize: 10.5),
-        ),
-        const SizedBox(height: 6),
-
-        Text(
-          "ESP Set Temperature: ${espSetTemp.toInt()}°C",
-          style: const TextStyle(
-            color: _P.textSecondary,
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// BOTTOM POWER PANEL
-// ═══════════════════════════════════════════════════════════════════════════
-
-class _BottomPowerPanel extends StatelessWidget {
-  final bool             isOn;
-  final Animation<double> pulseAnimation;
-  final VoidCallback     onTap;
-
-  const _BottomPowerPanel({
-    required this.isOn,
-    required this.pulseAnimation,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin:  const EdgeInsets.fromLTRB(16, 0, 16, 20),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: _P.cardWhite,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isOn
-              ? _P.blue2.withOpacity(0.25)
-              : const Color(0xFFE2E8F0),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: isOn ? _P.shadow : const Color(0x0D000000),
-            blurRadius: 24,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // ── Left: Status info ──────────────────────────────
+          SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 8, height: 8,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: isOn ? _P.green : const Color(0xFFCBD5E1),
-                        boxShadow: isOn
-                            ? [BoxShadow(color: _P.green.withOpacity(0.5), blurRadius: 6)]
-                            : [],
-                      ),
-                    ),
-                    const SizedBox(width: 7),
-                    Text(
-                      isOn ? "DEVICE ACTIVE" : "DEVICE STANDBY",
-                      style: TextStyle(
-                        color:      isOn ? _P.blue1 : _P.textSecondary,
-                        fontSize:   11.5,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
                 Text(
-                  isOn ? "Tap power to turn off" : "Tap power to turn on",
-                  style: const TextStyle(
-                    color:    _P.textSecondary,
-                    fontSize: 12,
+                  isOn ? 'Keep warm is on' : 'Keep warm is off',
+                  style: TextStyle(
+                    color: _C.text,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
                   ),
+                ),
+                SizedBox(height: 3),
+                Text(
+                  isOn
+                      ? 'Your mug is maintaining the selected mode.'
+                      : 'Turn it on when you are ready.',
+                  style: TextStyle(color: _C.muted, fontSize: 11.5),
                 ),
               ],
             ),
           ),
+          SizedBox(width: 10),
+          isBusy
+              ? SizedBox(
+            width: 36,
+            height: 36,
+            child: Padding(
+              padding: EdgeInsets.all(7),
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+          )
+              : Switch.adaptive(
+            value: isOn,
+            activeColor: _C.green,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-          // ── Right: Power button ────────────────────────────
-          GestureDetector(
-            onTap: onTap,
-            child: AnimatedBuilder(
-              animation: pulseAnimation,
-              builder: (_, __) => Stack(
-                alignment: Alignment.center,
-                children: [
-                  // Glow ring (only when ON)
-                  if (isOn)
-                    Opacity(
-                      opacity: pulseAnimation.value * 0.45,
-                      child: Container(
-                        width: 76, height: 76,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: _P.blue2.withOpacity(0.2),
-                        ),
-                      ),
-                    ),
+class _SafetyNote extends StatelessWidget {
+  _SafetyNote();
 
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 350),
-                    curve:    Curves.easeInOut,
-                    width: 60, height: 60,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: isOn
-                          ? const LinearGradient(
-                        colors: [Color(0xFF3B82F6), Color(0xFF2563EB)],
-                        begin:  Alignment.topLeft,
-                        end:    Alignment.bottomRight,
-                      )
-                          : const LinearGradient(
-                        colors: [Color(0xFFF1F5F9), Color(0xFFE2E8F0)],
-                        begin:  Alignment.topLeft,
-                        end:    Alignment.bottomRight,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: isOn
-                              ? _P.blue2.withOpacity(0.45)
-                              : Colors.black.withOpacity(0.08),
-                          blurRadius: isOn ? 20 : 6,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Center(
-                      child: Icon(
-                        Icons.power_settings_new_rounded,
-                        color: isOn ? Colors.white : const Color(0xFF94A3B8),
-                        size: 26,
-                      ),
-                    ),
-                  ),
-                ],
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _C.blueSoft,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Color(0xFFBFDBFE)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.shield_outlined, color: _C.blue, size: 19),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'For best performance, keep the mug charged and within Bluetooth range.',
+              style: TextStyle(
+                color: Color(0xFF1E40AF),
+                fontSize: 11.5,
+                height: 1.4,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
@@ -1097,90 +560,96 @@ class _BottomPowerPanel extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// STATUS BADGE
-// ═══════════════════════════════════════════════════════════════════════════
+class _SurfaceCard extends StatelessWidget {
+  _SurfaceCard({required this.child});
 
-class _StatusBadge extends StatelessWidget {
-  final bool isConnected;
-  const _StatusBadge({required this.isConnected});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isConnected ? _P.green : _P.red;
-    final bg    = isConnected ? const Color(0xFFF0FDF4) : const Color(0xFFFEF2F2);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.3), width: 1),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 6, height: 6,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: color,
-              boxShadow: [
-                BoxShadow(color: color.withOpacity(0.6), blurRadius: 5),
-              ],
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            isConnected ? "Connected" : "Disconnected",
-            style: TextStyle(
-              color:      color,
-              fontSize:   11.5,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// REUSABLE SHADOW CARD
-// ═══════════════════════════════════════════════════════════════════════════
-
-class _ShadowCard extends StatelessWidget {
   final Widget child;
-  final EdgeInsets padding;
-
-  const _ShadowCard({
-    required this.child,
-    this.padding = const EdgeInsets.all(16),
-  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: double.infinity,
-      padding: padding,
+      padding: EdgeInsets.all(17),
       decoration: BoxDecoration(
-        color: _P.cardWhite,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
-        boxShadow: const [
+        color: _C.card,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _C.border),
+        boxShadow: [
           BoxShadow(
-            color:       Color(0x0D2563EB),
-            blurRadius:  20,
-            offset:      Offset(0, 4),
-            spreadRadius: 0,
-          ),
-          BoxShadow(
-            color:       Color(0x08000000),
-            blurRadius:  6,
-            offset:      Offset(0, 1),
+            color: Color(0x0D0F172A),
+            blurRadius: 16,
+            offset: Offset(0, 5),
           ),
         ],
       ),
       child: child,
     );
+  }
+}
+
+class _DisconnectedView extends StatelessWidget {
+  _DisconnectedView({required this.onBack});
+
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.bluetooth_disabled_rounded, size: 54, color: _C.muted),
+            SizedBox(height: 16),
+            Text(
+              'Mug disconnected',
+              style: TextStyle(
+                color: _C.text,
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            SizedBox(height: 7),
+            Text(
+              'Return to the device screen to reconnect your Garam Mug.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: _C.muted, fontSize: 13, height: 1.4),
+            ),
+            SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: onBack,
+              icon: Icon(Icons.bluetooth_searching_rounded),
+              label: Text('Find my mug'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Color _modeColor(TemperatureMode mode) {
+  switch (mode) {
+    case TemperatureMode.coolAndCozy:
+      return Color(0xFF3B82F6);
+    case TemperatureMode.perfectSip:
+      return Color(0xFF0D9488);
+    case TemperatureMode.warmAndRich:
+      return Color(0xFFF97316);
+    case TemperatureMode.extraHot:
+      return Color(0xFFEF4444);
+  }
+}
+
+IconData _modeIcon(TemperatureMode mode) {
+  switch (mode) {
+    case TemperatureMode.coolAndCozy:
+      return Icons.ac_unit_rounded;
+    case TemperatureMode.perfectSip:
+      return Icons.coffee_rounded;
+    case TemperatureMode.warmAndRich:
+      return Icons.local_fire_department_rounded;
+    case TemperatureMode.extraHot:
+      return Icons.whatshot_rounded;
   }
 }

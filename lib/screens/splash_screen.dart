@@ -165,7 +165,7 @@ class _SplashScreenState extends State<SplashScreen>
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 650),
         reverseTransitionDuration: const Duration(milliseconds: 300),
-        pageBuilder: (_, __, ___) => const ScanScreen(),
+        pageBuilder: (_, __, ___) =>  ScanScreen(),
         transitionsBuilder: (_, animation, __, child) {
           return FadeTransition(
             opacity: CurvedAnimation(
