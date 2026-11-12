@@ -66,5 +66,7 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Garam Mug uses Bluetooth to connect to your mug, show its temperature and battery, and adjust heating.</string>
 </dict>
 </plist>

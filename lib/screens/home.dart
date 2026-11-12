@@ -5,30 +5,7 @@ import 'package:provider/provider.dart';
 import '../services/device_service.dart';
 import '../services/theme_service.dart';
 
-class _C {
-  static bool isDark = false;
-  static Color page = Color(0xFFF5F8FF);
-  static Color card = Colors.white;
-  static final Color blue = Color(0xFF2563EB);
-  static final Color blueDark = Color(0xFF1D4ED8);
-  static Color blueSoft = Color(0xFFEFF6FF);
-  static Color text = Color(0xFF0F172A);
-  static Color muted = Color(0xFF64748B);
-  static Color border = Color(0xFFE2E8F0);
-  static final Color green = Color(0xFF16A34A);
-  static final Color orange = Color(0xFFF97316);
-  static final Color red = Color(0xFFEF4444);
-
-  static void applyTheme(bool dark) {
-    isDark = dark;
-    page = dark ? Color(0xFF080D18) : Color(0xFFF5F8FF);
-    card = dark ? Color(0xFF111827) : Colors.white;
-    blueSoft = dark ? Color(0xFF172554) : Color(0xFFEFF6FF);
-    text = dark ? Color(0xFFF8FAFC) : Color(0xFF0F172A);
-    muted = dark ? Color(0xFF94A3B8) : Color(0xFF64748B);
-    border = dark ? Color(0xFF263348) : Color(0xFFE2E8F0);
-  }
-}
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   HomeScreen({super.key});
@@ -117,79 +94,217 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    _C.applyTheme(context.watch<ThemeService>().isDarkMode);
+    final palette = _MugPalette(context.watch<ThemeService>().isDarkMode);
     final service = context.watch<DeviceService>();
-    final device = service.selectedDevice;
+    final connected = service.isDeviceConnected;
+    final on = service.isOn;
+    final battery = service.battery.clamp(0, 100);
+    final batteryColor = battery < 15 ? palette.error
+        : battery < 30 ? palette.warmInk : palette.green;
+    final text = TextStyle(color: palette.text, fontWeight: FontWeight.w800);
+    final secondary = TextStyle(color: palette.muted, fontSize: 13);
 
     return Scaffold(
-      backgroundColor: _C.page,
+      backgroundColor: palette.page,
       appBar: AppBar(
-        backgroundColor: _C.card,
-        foregroundColor: _C.text,
-        systemOverlayStyle:
-        _C.isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
-        elevation: 0,
-        titleSpacing: 4,
-        leading: IconButton(
-          onPressed: () => Navigator.maybePop(context),
-          icon: Icon(Icons.arrow_back_rounded),
-        ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        backgroundColor: palette.page,
+        foregroundColor: palette.text,
+        surfaceTintColor: Colors.transparent,
+        systemOverlayStyle: palette.dark
+            ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+        titleSpacing: 0,
+        title: Row(
           children: [
-            Text(
-              'Garam Mug',
-              style: TextStyle(
-                color: _C.text,
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            Text(
-              service.isDeviceConnected ? 'Connected and ready' : 'Disconnected',
-              style: TextStyle(
-                color: service.isDeviceConnected ? _C.green : _C.red,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            _mugAsset('ic_mug_amber', 30),
+            const SizedBox(width: 8),
+            Flexible(child: Text('Garam Mug', style: text)),
           ],
         ),
         actions: [
-          if (device != null)
+          if (service.selectedDevice != null)
             IconButton(
               tooltip: 'Disconnect',
               onPressed: () => _disconnect(service),
-              icon: Icon(Icons.link_off_rounded, color: _C.muted),
+              icon: const Icon(Icons.link_off_rounded),
             ),
-          SizedBox(width: 8),
+          IconButton(
+            tooltip: 'Settings',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+            ),
+            icon: const Icon(Icons.settings_outlined),
+          ),
+          const SizedBox(width: 4),
         ],
-        bottom: PreferredSize(
-          preferredSize: Size.fromHeight(1),
-          child: Divider(height: 1, color: _C.border),
-        ),
       ),
-      body: device == null
-          ? _DisconnectedView(onBack: () => Navigator.maybePop(context))
+      body: !connected
+          ? Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.bluetooth_disabled, color: palette.muted, size: 48),
+              const SizedBox(height: 14),
+              Text('Mug disconnected', style: text.copyWith(fontSize: 22)),
+              const SizedBox(height: 8),
+              Text('Return to the device screen to reconnect.',
+                  textAlign: TextAlign.center, style: secondary),
+              const SizedBox(height: 16),
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(foregroundColor: palette.text),
+                onPressed: () => Navigator.maybePop(context),
+                child: const Text('Find my mug'),
+              ),
+            ],
+          ),
+        ),
+      )
           : SafeArea(
+        top: false,
         child: ListView(
-          padding: EdgeInsets.fromLTRB(16, 18, 16, 28),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
           children: [
-            _MugOverview(service: service),
-            SizedBox(height: 14),
-            _TemperatureModes(
-              selected: service.selectedTemperatureMode,
-              busy: _modeBusy,
-              onSelected: (mode) => _selectMode(service, mode),
+            Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+                decoration: BoxDecoration(
+                  color: palette.green.withOpacity(.14),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.circle, size: 9, color: palette.green),
+                    const SizedBox(width: 7),
+                    Text('Connected', style: text.copyWith(fontSize: 13)),
+                  ],
+                ),
+              ),
             ),
-            SizedBox(height: 14),
-            _PowerCard(
-              isOn: service.isOn,
-              isBusy: _powerBusy,
-              onChanged: (enabled) => _changePower(service, enabled),
+            const SizedBox(height: 16),
+            _MugPanel(
+              palette: palette,
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 5,
+                        child: _mugAsset('garam_mug_hero', 144),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 6,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                service.temperature > 0
+                                    ? '${service.temperature.toStringAsFixed(1)}°C'
+                                    : '—',
+                                style: text.copyWith(fontSize: 46, height: 1.05),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text('Current temperature', style: secondary),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  Divider(height: 20, color: palette.border),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 24,
+                    runSpacing: 8,
+                    children: [
+                      _MugMetric(
+                        label: '$battery%',
+                        semantics: 'Battery $battery percent',
+                        icon: _mugAsset('ic_battery', 23, tint: batteryColor),
+                        style: text,
+                      ),
+                      _MugMetric(
+                        label: on ? 'Heating' : 'Heating off',
+                        icon: _mugAsset('ic_heating', 22,
+                            tint: on ? null : palette.muted),
+                        style: text,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-            SizedBox(height: 14),
-            _SafetyNote(),
+            const SizedBox(height: 20),
+            Text('Set temperature', style: text.copyWith(fontSize: 21)),
+            const SizedBox(height: 10),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final count = constraints.maxWidth < 300 ||
+                    MediaQuery.textScalerOf(context).scale(15) > 21
+                    ? 2 : 4;
+                final width = (constraints.maxWidth - (count - 1) * 8) / count;
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final mode in TemperatureMode.values)
+                      SizedBox(
+                        width: width,
+                        child: _TemperatureButton(
+                          palette: palette,
+                          mode: mode,
+                          selected: mode == service.selectedTemperatureMode,
+                          busy: mode == _modeBusy,
+                          onPressed: _modeBusy == null
+                              ? () => _selectMode(service, mode) : null,
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 18),
+            _MugPanel(
+              palette: palette,
+              child: Row(
+                children: [
+                  Expanded(child: Text('Keep warm', style: text.copyWith(fontSize: 17))),
+                  if (_powerBusy)
+                    Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(
+                          color: palette.warmInk,
+                          strokeWidth: 2,
+                          semanticsLabel: 'Sending heating command',
+                        ),
+                      ),
+                    )
+                  else
+                    Semantics(
+                      label: 'Keep warm',
+                      child: Switch(
+                        value: on,
+                        activeColor: Colors.white,
+                        activeTrackColor: _MugPalette.amber,
+                        onChanged: (enabled) => _changePower(service, enabled),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Keep the mug charged and within Bluetooth range.',
+              textAlign: TextAlign.center,
+              style: secondary,
+            ),
           ],
         ),
       ),
@@ -197,459 +312,112 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _MugOverview extends StatelessWidget {
-  _MugOverview({required this.service});
+class _TemperatureButton extends StatelessWidget {
+  const _TemperatureButton({
+    required this.palette, required this.mode, required this.selected,
+    required this.busy, required this.onPressed,
+  });
 
-  final DeviceService service;
-
-  String get _status {
-    if (!service.isOn) return 'Heating is paused';
-    final difference = service.targetTemperature - service.temperature;
-    if (difference <= 1.5) return 'Ready for the perfect sip';
-    if (difference <= 4) return 'Almost at your selected warmth';
-    return 'Gently warming your coffee';
-  }
+  final _MugPalette palette;
+  final TemperatureMode mode;
+  final bool selected;
+  final bool busy;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    final liveTemperature = service.temperature;
-    final hasLiveTemperature = liveTemperature > 0;
-    final liveMode = TemperatureMode.fromTemperature(liveTemperature);
-    final battery = service.battery.clamp(0, 100);
-    final batteryColor =
-    battery >= 30 ? _C.green : battery >= 15 ? _C.orange : _C.red;
-
-    return Container(
-      padding: EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [_C.blue, _C.blueDark],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    final foreground = selected ? _MugPalette.navy : palette.text;
+    final label = '${mode.espValue}°C';
+    return Semantics(
+      selected: selected,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(0, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          backgroundColor: selected ? _MugPalette.amber : palette.card,
+          foregroundColor: foreground,
+          disabledForegroundColor: foreground,
+          disabledBackgroundColor: selected ? _MugPalette.amber : palette.card,
+          side: BorderSide(color: selected ? _MugPalette.amber : palette.border),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x332563EB),
-            blurRadius: 24,
-            offset: Offset(0, 10),
+        child: busy
+            ? SizedBox.square(
+          dimension: 18,
+          child: CircularProgressIndicator(
+            strokeWidth: 2, color: foreground,
+            semanticsLabel: 'Setting temperature to $label',
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(.14),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(
-                  Icons.coffee_rounded,
-                  color: Colors.white,
-                  size: 28,
-                ),
-              ),
-              SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      service.selectedDevice?.name ?? 'Garam Mug',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    SizedBox(height: 3),
-                    Text(
-                      _status,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(.78),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(.14),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      battery >= 85
-                          ? Icons.battery_full_rounded
-                          : Icons.battery_5_bar_rounded,
-                      color: batteryColor,
-                      size: 17,
-                    ),
-                    SizedBox(width: 4),
-                    Text(
-                      '$battery%',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 22),
-          Text(
-            'CURRENT COFFEE TEMPERATURE',
-            style: TextStyle(
-              color: Colors.white.withOpacity(.65),
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.4,
-            ),
-          ),
-          SizedBox(height: 7),
-          Row(
-            children: [
-              Icon(
-                hasLiveTemperature
-                    ? _modeIcon(liveMode)
-                    : Icons.sync_rounded,
-                color: Colors.white,
-                size: 24,
-              ),
-              SizedBox(width: 9),
-              Text(
-                hasLiveTemperature
-                    ? '${liveTemperature.toStringAsFixed(1)}°C  •  ${liveMode.label}'
-                    : 'Waiting for mug status…',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-        ],
+        )
+            : FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+        ),
       ),
     );
   }
 }
 
-class _TemperatureModes extends StatelessWidget {
-  _TemperatureModes({
-    required this.selected,
-    required this.busy,
-    required this.onSelected,
-  });
-
-  final TemperatureMode selected;
-  final TemperatureMode? busy;
-  final ValueChanged<TemperatureMode> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return _SurfaceCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Choose your warmth',
-            style: TextStyle(
-              color: _C.text,
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          SizedBox(height: 4),
-          Text(
-            'Select how you want your coffee to feel.',
-            style: TextStyle(color: _C.muted, fontSize: 12),
-          ),
-          SizedBox(height: 16),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: NeverScrollableScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: 1.55,
-            ),
-            itemCount: TemperatureMode.values.length,
-            itemBuilder: (context, index) {
-              final mode = TemperatureMode.values[index];
-              final isSelected = mode == selected;
-              final isBusy = mode == busy;
-              final color = _modeColor(mode);
-              return InkWell(
-                borderRadius: BorderRadius.circular(16),
-                onTap: busy == null ? () => onSelected(mode) : null,
-                child: AnimatedContainer(
-                  duration: Duration(milliseconds: 220),
-                  padding: EdgeInsets.all(13),
-                  decoration: BoxDecoration(
-                    color: isSelected ? color.withOpacity(.11) : _C.page,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isSelected ? color : _C.border,
-                      width: isSelected ? 1.7 : 1,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          color: color.withOpacity(.13),
-                          shape: BoxShape.circle,
-                        ),
-                        child: isBusy
-                            ? Padding(
-                          padding: EdgeInsets.all(10),
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: color,
-                          ),
-                        )
-                            : Icon(_modeIcon(mode), color: color, size: 20),
-                      ),
-                      SizedBox(width: 9),
-                      Expanded(
-                        child: Text(
-                          mode.label,
-                          style: TextStyle(
-                            color: isSelected ? color : _C.text,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            height: 1.15,
-                          ),
-                        ),
-                      ),
-                      if (isSelected && !isBusy)
-                        Icon(Icons.check_circle_rounded, color: color, size: 17),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PowerCard extends StatelessWidget {
-  _PowerCard({
-    required this.isOn,
-    required this.isBusy,
-    required this.onChanged,
-  });
-
-  final bool isOn;
-  final bool isBusy;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return _SurfaceCard(
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: (isOn ? _C.green : _C.muted).withOpacity(.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              isOn ? Icons.local_fire_department_rounded : Icons.power_settings_new,
-              color: isOn ? _C.green : _C.muted,
-            ),
-          ),
-          SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isOn ? 'Keep warm is on' : 'Keep warm is off',
-                  style: TextStyle(
-                    color: _C.text,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                SizedBox(height: 3),
-                Text(
-                  isOn
-                      ? 'Your mug is maintaining the selected mode.'
-                      : 'Turn it on when you are ready.',
-                  style: TextStyle(color: _C.muted, fontSize: 11.5),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(width: 10),
-          isBusy
-              ? SizedBox(
-            width: 36,
-            height: 36,
-            child: Padding(
-              padding: EdgeInsets.all(7),
-              child: CircularProgressIndicator(strokeWidth: 2.5),
-            ),
-          )
-              : Switch.adaptive(
-            value: isOn,
-            activeColor: _C.green,
-            onChanged: onChanged,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SafetyNote extends StatelessWidget {
-  _SafetyNote();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: _C.blueSoft,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Color(0xFFBFDBFE)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.shield_outlined, color: _C.blue, size: 19),
-          SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'For best performance, keep the mug charged and within Bluetooth range.',
-              style: TextStyle(
-                color: Color(0xFF1E40AF),
-                fontSize: 11.5,
-                height: 1.4,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SurfaceCard extends StatelessWidget {
-  _SurfaceCard({required this.child});
-
+class _MugPanel extends StatelessWidget {
+  const _MugPanel({required this.palette, required this.child});
+  final _MugPalette palette;
   final Widget child;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(17),
-      decoration: BoxDecoration(
-        color: _C.card,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: _C.border),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x0D0F172A),
-            blurRadius: 16,
-            offset: Offset(0, 5),
-          ),
-        ],
-      ),
-      child: child,
-    );
-  }
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+    decoration: BoxDecoration(
+      color: palette.card,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: palette.border),
+      boxShadow: palette.dark ? null : const [
+        BoxShadow(color: Color(0x0D14243B), blurRadius: 12, offset: Offset(0, 4)),
+      ],
+    ),
+    child: child,
+  );
 }
 
-class _DisconnectedView extends StatelessWidget {
-  _DisconnectedView({required this.onBack});
-
-  final VoidCallback onBack;
+class _MugMetric extends StatelessWidget {
+  const _MugMetric({required this.label, required this.icon, required this.style,
+    this.semantics});
+  final String label;
+  final Widget icon;
+  final TextStyle style;
+  final String? semantics;
 
   @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.all(28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.bluetooth_disabled_rounded, size: 54, color: _C.muted),
-            SizedBox(height: 16),
-            Text(
-              'Mug disconnected',
-              style: TextStyle(
-                color: _C.text,
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            SizedBox(height: 7),
-            Text(
-              'Return to the device screen to reconnect your Garam Mug.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: _C.muted, fontSize: 13, height: 1.4),
-            ),
-            SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: onBack,
-              icon: Icon(Icons.bluetooth_searching_rounded),
-              label: Text('Find my mug'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      icon,
+      const SizedBox(width: 6),
+      Text(label, style: style, semanticsLabel: semantics),
+    ],
+  );
 }
 
-Color _modeColor(TemperatureMode mode) {
-  switch (mode) {
-    case TemperatureMode.coolAndCozy:
-      return Color(0xFF3B82F6);
-    case TemperatureMode.perfectSip:
-      return Color(0xFF0D9488);
-    case TemperatureMode.warmAndRich:
-      return Color(0xFFF97316);
-    case TemperatureMode.extraHot:
-      return Color(0xFFEF4444);
-  }
-}
+Widget _mugAsset(String name, double size, {Color? tint}) => Image.asset(
+  'assets/images/$name.png',
+  width: size,
+  height: size,
+  fit: BoxFit.contain,
+  color: tint,
+  excludeFromSemantics: true,
+);
 
-IconData _modeIcon(TemperatureMode mode) {
-  switch (mode) {
-    case TemperatureMode.coolAndCozy:
-      return Icons.ac_unit_rounded;
-    case TemperatureMode.perfectSip:
-      return Icons.coffee_rounded;
-    case TemperatureMode.warmAndRich:
-      return Icons.local_fire_department_rounded;
-    case TemperatureMode.extraHot:
-      return Icons.whatshot_rounded;
-  }
+class _MugPalette {
+  const _MugPalette(this.dark);
+  final bool dark;
+  static const navy = Color(0xFF14243B);
+  static const amber = Color(0xFFF59E0B);
+  Color get page => dark ? const Color(0xFF0B1422) : const Color(0xFFFFF8EE);
+  Color get card => dark ? navy : Colors.white;
+  Color get text => dark ? const Color(0xFFFFF8EE) : navy;
+  Color get muted => dark ? const Color(0xFFB3BFCC) : const Color(0xFF515F70);
+  Color get border => dark ? const Color(0xFF2B4058) : const Color(0xFFE8DED1);
+  Color get green => dark ? const Color(0xFF86EFAC) : const Color(0xFF16803C);
+  Color get warmInk => dark ? amber : const Color(0xFF9A4C06);
+  Color get error => dark ? const Color(0xFFFCA5A5) : const Color(0xFFB91C1C);
 }

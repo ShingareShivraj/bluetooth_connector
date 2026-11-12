@@ -1,139 +1,51 @@
-import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
 import 'scan_screen.dart';
+import '../services/auth_service.dart';
+import 'login_viewmodel.dart';
+
+// --------------------------------------------------
+// COMPATIBILITY ENTRY POINT
+// MaterialApp remains in main.dart.
+// --------------------------------------------------
+
 class Login extends StatelessWidget {
   const Login({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Task Manager Login',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        fontFamily: 'Inter',
-        useMaterial3: true,
-      ),
-      home: const LoginScreen(),
-    );
+    return const LoginScreen();
   }
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// --------------------------------------------------
+// APP COLORS
+// --------------------------------------------------
 
 class AppColors {
-  static const tealDark = Color(0xFF0AADA8);
-  static const tealMid = Color(0xFF1DBFB8);
-  static const tealLight = Color(0xFF2ED8CE);
-  static const tealBg = Color(0xFF8FD8D5);
+  static const background = Color(0xFF080808);
+  static const backgroundLight = Color(0xFF11100F);
+
+  static const cardBg = Color(0xFF151412);
+  static const inputBg = Color(0xFF201E1A);
+
+  static const gold = Color(0xFFFFA21A);
+  static const goldLight = Color(0xFFFFC46B);
+  static const goldDark = Color(0xFFD97808);
+
   static const white = Color(0xFFFFFFFF);
-  static const cardBg = Color(0xFFFFFFFF);
-  static const inputBg = Color(0xFFF5F7FA);
-  static const textDark = Color(0xFF1A1F36);
-  static const textMedium = Color(0xFF6B7280);
-  static const textLight = Color(0xFF9CA3AF);
-  static const tealAccent = Color(0xFF0AADA8);
-  static const dividerColor = Color(0xFFE5E7EB);
-  static const checkboxBorder = Color(0xFFD1D5DB);
-  static const appleDark = Color(0xFF1C1C1E);
-  static const googleBorder = Color(0xFFE2E8F0);
-  static const shadowColor = Color(0x1A000000);
-  static const overlayWhite = Color(0x1AFFFFFF);
-  static const overlayWhiteMed = Color(0x26FFFFFF);
+  static const textMedium = Color(0xFFAAA39A);
+  static const textLight = Color(0xFF77716A);
+
+  static const border = Color(0xFF37332C);
+  static const error = Color(0xFFFF7777);
 }
 
-class AppTextStyles {
-  static const headingLarge = TextStyle(
-    fontSize: 28,
-    fontWeight: FontWeight.w700,
-    color: AppColors.white,
-    height: 1.3,
-    letterSpacing: -0.3,
-  );
-
-  static const headingAccent = TextStyle(
-    fontSize: 28,
-    fontWeight: FontWeight.w700,
-    color: AppColors.tealLight,
-    height: 1.3,
-    letterSpacing: -0.3,
-  );
-
-  static const cardTitle = TextStyle(
-    fontSize: 24,
-    fontWeight: FontWeight.w800,
-    color: AppColors.textDark,
-    letterSpacing: -0.5,
-  );
-
-  static const bodyRegular = TextStyle(
-    fontSize: 13.5,
-    fontWeight: FontWeight.w400,
-    color: AppColors.textMedium,
-    letterSpacing: 0.1,
-  );
-
-  static const linkStyle = TextStyle(
-    fontSize: 13.5,
-    fontWeight: FontWeight.w600,
-    color: AppColors.tealAccent,
-    letterSpacing: 0.1,
-  );
-
-  static const inputText = TextStyle(
-    fontSize: 14,
-    fontWeight: FontWeight.w500,
-    color: AppColors.textDark,
-    letterSpacing: 0.1,
-  );
-
-  static const hintText = TextStyle(
-    fontSize: 14,
-    fontWeight: FontWeight.w400,
-    color: AppColors.textLight,
-  );
-
-  static const buttonText = TextStyle(
-    fontSize: 15,
-    fontWeight: FontWeight.w700,
-    color: AppColors.white,
-    letterSpacing: 0.3,
-  );
-
-  static const dividerText = TextStyle(
-    fontSize: 12.5,
-    fontWeight: FontWeight.w500,
-    color: AppColors.textLight,
-    letterSpacing: 0.5,
-  );
-
-  static const socialText = TextStyle(
-    fontSize: 14,
-    fontWeight: FontWeight.w600,
-    color: AppColors.textDark,
-    letterSpacing: 0.1,
-  );
-
-  static const socialTextLight = TextStyle(
-    fontSize: 14,
-    fontWeight: FontWeight.w600,
-    color: AppColors.white,
-    letterSpacing: 0.1,
-  );
-
-  static const checkboxLabel = TextStyle(
-    fontSize: 13,
-    fontWeight: FontWeight.w500,
-    color: AppColors.textMedium,
-  );
-
-  static const forgotPassword = TextStyle(
-    fontSize: 13,
-    fontWeight: FontWeight.w600,
-    color: AppColors.tealAccent,
-  );
-}
-
-// ─── Main Screen ──────────────────────────────────────────────────────────────
+// --------------------------------------------------
+// LOGIN SCREEN
+// --------------------------------------------------
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -143,169 +55,196 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  bool _rememberMe = false;
-  final _usernameController = TextEditingController(text: '');
+  bool _rememberMe = true;
+
+  final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+
+  late final LoginViewModel _vm;
+
+  @override
+  void initState() {
+    super.initState();
+    _vm = LoginViewModel(context.read<AuthService>());
+  }
+
+  // ------------------------------------------------
+  // EXISTING LOGIN LOGIC - UNCHANGED
+  // ------------------------------------------------
+
+  Future<void> _signIn() async {
+    FocusScope.of(context).unfocus();
+
+    final success = await _vm.signIn(
+      _usernameController.text,
+      _passwordController.text,
+      _rememberMe,
+    );
+
+    if (!mounted || !success) return;
+
+    _passwordController.clear();
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => ScanScreen(),
+      ),
+          (_) => false,
+    );
+  }
 
   @override
   void dispose() {
+    _vm.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
+  // ------------------------------------------------
+  // MAIN UI
+  // ------------------------------------------------
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.tealDark,
-      body: Stack(
-        children: [
-          // Gradient background
-          const _GradientBackground(),
-          // Abstract decorative shapes
-          const _BackgroundShapes(),
-          // Main content
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top hero section
-                Expanded(
-                  flex: 4,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(26, 20, 24, 0),
-                    child: _HeroSection(),
-                  ),
+    return AnimatedBuilder(
+      animation: _vm,
+      builder: (context, _) {
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          body: Stack(
+            children: [
+              // Background
+              const _PremiumBackground(),
+
+              SafeArea(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return SingleChildScrollView(
+                      keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                      physics: const BouncingScrollPhysics(),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: constraints.maxHeight,
+                        ),
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(
+                              maxWidth: 430,
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 25,
+                                vertical: 22,
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  // BRAND
+                                  const _BrandSection(),
+
+                                  const SizedBox(height: 36),
+
+                                  // LOGIN FORM
+                                  _LoginCard(
+                                    rememberMe: _rememberMe,
+                                    onRememberMeChanged: (value) {
+                                      setState(() {
+                                        _rememberMe = value ?? false;
+                                      });
+                                    },
+                                    usernameController:
+                                    _usernameController,
+                                    passwordController:
+                                    _passwordController,
+                                    busy: _vm.busy,
+                                    error: _vm.error,
+                                    onSubmit: _signIn,
+                                  ),
+
+                                  const SizedBox(height: 24),
+
+                                  // MUG ILLUSTRATION
+                                  const _MugFooter(),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
-                // Login card
-                Expanded(
-                  flex: 7,
-                  child: _LoginCard(
-                    rememberMe: _rememberMe,
-                    onRememberMeChanged: (val) =>
-                        setState(() => _rememberMe = val ?? false),
-                    // usernameController: _usernameController,
-                    passwordController: _passwordController,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
 
-// ─── Gradient Background ──────────────────────────────────────────────────────
+// --------------------------------------------------
+// PREMIUM BACKGROUND
+// --------------------------------------------------
 
-class _GradientBackground extends StatelessWidget {
-  const _GradientBackground();
+class _PremiumBackground extends StatelessWidget {
+  const _PremiumBackground();
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
           colors: [
-            Color(0xFF07B5AF),
-            Color(0xFF0AADA8),
-            Color(0xFF13C4BC),
-            Color(0xFF7DD8D6),
+            Color(0xFF15110B),
+            Color(0xFF0B0A09),
+            Color(0xFF080808),
           ],
-          stops: [0.0, 0.3, 0.6, 1.0],
+          stops: [0.0, 0.38, 1.0],
         ),
       ),
-    );
-  }
-}
-
-// ─── Background Shapes ────────────────────────────────────────────────────────
-
-class _BackgroundShapes extends StatelessWidget {
-  const _BackgroundShapes();
-
-  @override
-  Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    return SizedBox.expand(
       child: Stack(
         children: [
-          // Large gear bottom-left
+          // Subtle top golden glow
           Positioned(
-            left: -30,
-            bottom: size.height * 0.38,
-            child: Opacity(
-              opacity: 0.15,
-              child: _GearIcon(size: 110, color: AppColors.white),
-            ),
-          ),
-          // Small gear offset
-          Positioned(
-            left: 60,
-            bottom: size.height * 0.44,
-            child: Opacity(
-              opacity: 0.10,
-              child: _GearIcon(size: 60, color: AppColors.white),
-            ),
-          ),
-          // Circle top right
-          Positioned(
-            right: -40,
-            top: -40,
-            child: Opacity(
-              opacity: 0.12,
-              child: Container(
-                width: 160,
-                height: 160,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.white,
+            top: -160,
+            left: -80,
+            right: -80,
+            child: Container(
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    AppColors.gold.withOpacity(0.10),
+                    AppColors.gold.withOpacity(0.025),
+                    Colors.transparent,
+                  ],
                 ),
               ),
             ),
           ),
-          // Small circle mid-right
+
+          // Subtle bottom glow
           Positioned(
-            right: 30,
-            top: 80,
-            child: Opacity(
-              opacity: 0.10,
-              child: Container(
-                width: 60,
-                height: 60,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.white,
+            bottom: -180,
+            left: 0,
+            right: 0,
+            child: Container(
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    AppColors.gold.withOpacity(0.055),
+                    Colors.transparent,
+                  ],
                 ),
               ),
-            ),
-          ),
-          // Decorative ring
-          Positioned(
-            right: 20,
-            bottom: size.height * 0.52,
-            child: Opacity(
-              opacity: 0.12,
-              child: Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.white, width: 8),
-                ),
-              ),
-            ),
-          ),
-          // Mockup phone frame hint
-          Positioned(
-            right: -18,
-            top: size.height * 0.04,
-            child: Opacity(
-              opacity: 0.22,
-              child: _PhoneMockupHint(),
             ),
           ),
         ],
@@ -314,249 +253,365 @@ class _BackgroundShapes extends StatelessWidget {
   }
 }
 
-class _GearIcon extends StatelessWidget {
-  final double size;
-  final Color color;
-  const _GearIcon({required this.size, required this.color});
+// --------------------------------------------------
+// BRAND SECTION
+// --------------------------------------------------
 
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      size: Size(size, size),
-      painter: _GearPainter(color: color),
-    );
-  }
-}
+class _BrandSection extends StatelessWidget {
+  const _BrandSection();
 
-class _GearPainter extends CustomPainter {
-  final Color color;
-  _GearPainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-
-    final center = Offset(size.width / 2, size.height / 2);
-    final outerRadius = size.width * 0.45;
-    final innerRadius = size.width * 0.28;
-    final toothCount = 8;
-    final toothDepth = size.width * 0.10;
-
-    final path = Path();
-    for (int i = 0; i < toothCount; i++) {
-      final angle1 = (2 * math.pi * i / toothCount) - math.pi / toothCount * 0.6;
-      final angle2 = (2 * math.pi * i / toothCount) + math.pi / toothCount * 0.6;
-      final angle3 = angle2 + math.pi / toothCount * 0.2;
-      final angle4 = (2 * math.pi * (i + 1) / toothCount) - math.pi / toothCount * 0.8;
-
-      if (i == 0) {
-        path.moveTo(
-          center.dx + (outerRadius + toothDepth) * math.cos(angle1),
-          center.dy + (outerRadius + toothDepth) * math.sin(angle1),
-        );
-      }
-      path.lineTo(
-        center.dx + (outerRadius + toothDepth) * math.cos(angle2),
-        center.dy + (outerRadius + toothDepth) * math.sin(angle2),
-      );
-      path.lineTo(
-        center.dx + outerRadius * math.cos(angle3),
-        center.dy + outerRadius * math.sin(angle3),
-      );
-      path.lineTo(
-        center.dx + outerRadius * math.cos(angle4),
-        center.dy + outerRadius * math.sin(angle4),
-      );
-      path.lineTo(
-        center.dx + (outerRadius + toothDepth) * math.cos(angle4 + math.pi / toothCount * 0.2),
-        center.dy + (outerRadius + toothDepth) * math.sin(angle4 + math.pi / toothCount * 0.2),
-      );
-    }
-    path.close();
-    canvas.drawPath(path, paint);
-
-    // Center hole
-    canvas.drawCircle(center, innerRadius, Paint()..color = AppColors.tealDark.withOpacity(0.3));
-  }
-
-  @override
-  bool shouldRepaint(_GearPainter old) => false;
-}
-
-class _PhoneMockupHint extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 90,
-      height: 160,
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.4), width: 2),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 40,
-            height: 5,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(3),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            width: 55,
-            height: 5,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(3),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Icon(Icons.task_alt_rounded, color: Colors.white.withOpacity(0.5), size: 28),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Hero Section ─────────────────────────────────────────────────────────────
-
-class _HeroSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // App logo / brand mark
+        // Flame Logo
         Container(
-          width: 40,
-          height: 40,
+          width: 86,
+          height: 86,
           decoration: BoxDecoration(
-            color: AppColors.overlayWhite,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.overlayWhiteMed, width: 1),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: AppColors.gold.withOpacity(0.85),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.gold.withOpacity(0.13),
+                blurRadius: 28,
+                spreadRadius: 2,
+              ),
+            ],
           ),
-          child: const Icon(
-            Icons.check_circle_outline_rounded,
-            color: AppColors.white,
-            size: 22,
+          child: ClipOval(
+            child: ClipRect(
+              child: Transform.scale(
+                scale: 2.0,
+                child: Image.asset(
+                  'assets/images/flames.png',
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
           ),
         ),
-        const SizedBox(height: 22),
-        // Heading with teal accent
+
+        const SizedBox(height: 17),
+
+        // Brand name
         RichText(
           text: const TextSpan(
             children: [
               TextSpan(
-                text: 'Log in to stay on\n',
-                style: AppTextStyles.headingLarge,
+                text: 'Gram ',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 35,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -1.3,
+                ),
               ),
               TextSpan(
-                text: 'top of ',
-                style: AppTextStyles.headingAccent,
-              ),
-              TextSpan(
-                text: 'your tasks\nand projects.',
-                style: AppTextStyles.headingLarge,
+                text: 'Mug',
+                style: TextStyle(
+                  color: AppColors.gold,
+                  fontSize: 35,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -1.3,
+                ),
               ),
             ],
           ),
+        ),
+
+        const SizedBox(height: 7),
+
+        // Tagline
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 25,
+              height: 1,
+              color: AppColors.gold.withOpacity(0.65),
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              'Keep Your Drink Hot, For Longer',
+              style: TextStyle(
+                color: AppColors.textMedium,
+                fontSize: 11,
+                fontWeight: FontWeight.w400,
+                letterSpacing: 0.7,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Container(
+              width: 25,
+              height: 1,
+              color: AppColors.gold.withOpacity(0.65),
+            ),
+          ],
         ),
       ],
     );
   }
 }
 
-// ─── Login Card ───────────────────────────────────────────────────────────────
+// --------------------------------------------------
+// LOGIN CARD
+// --------------------------------------------------
 
 class _LoginCard extends StatelessWidget {
   final bool rememberMe;
   final ValueChanged<bool?> onRememberMeChanged;
-  // final TextEditingController usernameController;
+
+  final TextEditingController usernameController;
   final TextEditingController passwordController;
+
+  final bool busy;
+  final String? error;
+  final VoidCallback onSubmit;
 
   const _LoginCard({
     required this.rememberMe,
     required this.onRememberMeChanged,
-    // required this.usernameController,
+    required this.usernameController,
     required this.passwordController,
+    required this.busy,
+    required this.error,
+    required this.onSubmit,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      decoration: const BoxDecoration(
+      padding: const EdgeInsets.fromLTRB(23, 26, 23, 25),
+      decoration: BoxDecoration(
         color: AppColors.cardBg,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(32),
-          topRight: Radius.circular(32),
+        borderRadius: BorderRadius.circular(23),
+        border: Border.all(
+          color: AppColors.border,
+          width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: Color(0x26000000),
-            blurRadius: 40,
-            spreadRadius: 0,
-            offset: Offset(0, -8),
+            color: Colors.black.withOpacity(0.40),
+            blurRadius: 35,
+            offset: const Offset(0, 14),
+          ),
+          BoxShadow(
+            color: AppColors.gold.withOpacity(0.025),
+            blurRadius: 20,
+            spreadRadius: 1,
           ),
         ],
       ),
-      child: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(24, 30, 24, 24),
+      child: AutofillGroup(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Drag handle
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 24),
+            // HEADER
+            const Text(
+              'Welcome Back',
+              style: TextStyle(
+                color: AppColors.white,
+                fontSize: 25,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.6,
+              ),
+            ),
+
+            const SizedBox(height: 7),
+
+            const Text(
+              'Sign in with your account to continue.',
+              style: TextStyle(
+                color: AppColors.textMedium,
+                fontSize: 12,
+                height: 1.5,
+              ),
+            ),
+
+            const SizedBox(height: 27),
+
+            // USERNAME LABEL
+            const _FieldLabel(
+              text: 'EMAIL OR USERNAME',
+            ),
+
+            const SizedBox(height: 10),
+
+            // USERNAME FIELD
+            _InputField(
+              controller: usernameController,
+              hint: 'Enter your email or username',
+              icon: Icons.person_outline_rounded,
+              keyboardType: TextInputType.emailAddress,
+            ),
+
+            const SizedBox(height: 21),
+
+            // PASSWORD LABEL
+            const _FieldLabel(
+              text: 'PASSWORD',
+            ),
+
+            const SizedBox(height: 10),
+
+            // PASSWORD FIELD
+            _InputField(
+              controller: passwordController,
+              hint: 'Enter your password',
+              icon: Icons.lock_outline_rounded,
+              isPassword: true,
+            ),
+
+            const SizedBox(height: 16),
+
+            // REMEMBER ME
+            Row(
+              children: [
+                SizedBox(
+                  width: 21,
+                  height: 21,
+                  child: Checkbox(
+                    value: rememberMe,
+                    onChanged: busy ? null : onRememberMeChanged,
+                    activeColor: AppColors.gold,
+                    checkColor: Colors.black,
+                    side: const BorderSide(
+                      color: AppColors.textLight,
+                      width: 1.3,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    materialTapTargetSize:
+                    MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+
+                const SizedBox(width: 9),
+
+                const Text(
+                  'Keep me signed in',
+                  style: TextStyle(
+                    color: AppColors.textMedium,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+
+            // BACKEND ERROR
+            if (error != null) ...[
+              const SizedBox(height: 16),
+
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE5E7EB),
-                  borderRadius: BorderRadius.circular(2),
+                  color: AppColors.error.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: AppColors.error.withOpacity(0.25),
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.error_outline_rounded,
+                      color: AppColors.error,
+                      size: 17,
+                    ),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Text(
+                        error!,
+                        style: const TextStyle(
+                          color: AppColors.error,
+                          fontSize: 12,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 26),
+
+            // SIGN IN BUTTON
+            SizedBox(
+              width: double.infinity,
+              height: 54,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      Color(0xFFFFC15C),
+                      Color(0xFFFFA21A),
+                      Color(0xFFE9890A),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.gold.withOpacity(0.19),
+                      blurRadius: 18,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: FilledButton(
+                  onPressed: busy ? null : onSubmit,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    disabledBackgroundColor: Colors.transparent,
+                    foregroundColor: Colors.black,
+                    disabledForegroundColor: Colors.black54,
+                    elevation: 0,
+                    shadowColor: Colors.transparent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: busy
+                      ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      color: Colors.black,
+                    ),
+                  )
+                      : const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Sign In',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      SizedBox(width: 10),
+                      Icon(
+                        Icons.arrow_forward_rounded,
+                        size: 19,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-            // Title row
-            const _CardHeader(),
-            const SizedBox(height: 26),
-            // Username field
-            _InputField(
-              // controller: usernameController,
-              hint: 'Username',
-              icon: Icons.person_outline_rounded,
-            ),
-            const SizedBox(height: 14),
-            // Email field
-            _InputField(
-              //controller: emailController,
-              hint: 'Enter your password',
-              icon: Icons.mail_outline_rounded,
-              keyboardType: TextInputType.emailAddress,
-            ),
-            const SizedBox(height: 16),
-            // Remember me + forgot password
-            _OptionsRow(
-              rememberMe: rememberMe,
-              onChanged: onRememberMeChanged,
-            ),
-            const SizedBox(height: 22),
-            // Login button
-            const _LoginButton(),
-            const SizedBox(height: 20),
-            // Divider
-            const _OrDivider(),
-            const SizedBox(height: 18),
-            // Social buttons
-            //const _SocialButtons(),
-            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -564,48 +619,44 @@ class _LoginCard extends StatelessWidget {
   }
 }
 
-// ─── Card Header ──────────────────────────────────────────────────────────────
+// --------------------------------------------------
+// FIELD LABEL
+// --------------------------------------------------
 
-class _CardHeader extends StatelessWidget {
-  const _CardHeader();
+class _FieldLabel extends StatelessWidget {
+  final String text;
+
+  const _FieldLabel({
+    required this.text,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Login', style: AppTextStyles.cardTitle),
-        const SizedBox(height: 6),
-        RichText(
-          text: const TextSpan(
-            children: [
-              TextSpan(
-                text: "Don't Have An Account? ",
-                style: AppTextStyles.bodyRegular,
-              ),
-              TextSpan(
-                text: 'Sign Up',
-                style: AppTextStyles.linkStyle,
-              ),
-            ],
-          ),
-        ),
-      ],
+    return Text(
+      text,
+      style: const TextStyle(
+        color: Color(0xFFD2C9BB),
+        fontSize: 10,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 1.3,
+      ),
     );
   }
 }
 
-// ─── Input Field ──────────────────────────────────────────────────────────────
+// --------------------------------------------------
+// INPUT FIELD
+// --------------------------------------------------
 
 class _InputField extends StatefulWidget {
-  //final TextEditingController controller;
+  final TextEditingController controller;
   final String hint;
   final IconData icon;
   final TextInputType keyboardType;
   final bool isPassword;
 
   const _InputField({
-   // required this.controller,
+    required this.controller,
     required this.hint,
     required this.icon,
     this.keyboardType = TextInputType.text,
@@ -622,55 +673,80 @@ class _InputFieldState extends State<_InputField> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 54,
+      height: 55,
       decoration: BoxDecoration(
         color: AppColors.inputBg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFF0F2F5), width: 1),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(
+          color: AppColors.border,
+          width: 1,
+        ),
       ),
       child: TextField(
-        //controller: widget.controller,
+        controller: widget.controller,
         keyboardType: widget.keyboardType,
         obscureText: widget.isPassword ? _obscureText : false,
-        style: AppTextStyles.inputText,
+        autofillHints: widget.isPassword
+            ? const [AutofillHints.password]
+            : const [AutofillHints.username],
+        style: const TextStyle(
+          color: AppColors.white,
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+        ),
+        cursorColor: AppColors.gold,
         decoration: InputDecoration(
           hintText: widget.hint,
-          hintStyle: AppTextStyles.hintText,
+          hintStyle: const TextStyle(
+            color: AppColors.textLight,
+            fontSize: 12,
+            fontWeight: FontWeight.w400,
+          ),
 
           // LEFT ICON
           prefixIcon: Padding(
-            padding: const EdgeInsets.only(left: 16, right: 12),
+            padding: const EdgeInsets.only(
+              left: 15,
+              right: 11,
+            ),
             child: Icon(
               widget.icon,
-              color: AppColors.textLight,
-              size: 20,
+              color: AppColors.goldDark,
+              size: 19,
             ),
           ),
 
-          // RIGHT ICON (SHOW/HIDE PASSWORD)
+          // PASSWORD VISIBILITY
           suffixIcon: widget.isPassword
               ? IconButton(
-            icon: Icon(
-              _obscureText
-                  ? Icons.visibility_off_rounded
-                  : Icons.visibility_rounded,
-              size: 20,
-              color: AppColors.textLight,
-            ),
             onPressed: () {
               setState(() {
                 _obscureText = !_obscureText;
               });
             },
+            icon: Icon(
+              _obscureText
+                  ? Icons.visibility_off_outlined
+                  : Icons.visibility_outlined,
+              color: AppColors.textMedium,
+              size: 19,
+            ),
           )
               : null,
 
-          prefixIconConstraints: const BoxConstraints(minWidth: 52),
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 48,
+          ),
+
           border: InputBorder.none,
           enabledBorder: InputBorder.none,
           focusedBorder: InputBorder.none,
-          contentPadding:
-          const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
+
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 17,
+            horizontal: 4,
+          ),
+
           isDense: true,
         ),
       ),
@@ -678,288 +754,37 @@ class _InputFieldState extends State<_InputField> {
   }
 }
 
-// ─── Options Row (Remember Me + Forgot Password) ──────────────────────────────
+// --------------------------------------------------
+// BOTTOM MUG ILLUSTRATION
+// --------------------------------------------------
 
-class _OptionsRow extends StatelessWidget {
-  final bool rememberMe;
-  final ValueChanged<bool?> onChanged;
-
-  const _OptionsRow({required this.rememberMe, required this.onChanged});
+class _MugFooter extends StatelessWidget {
+  const _MugFooter();
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
       children: [
-        // Custom checkbox
-        GestureDetector(
-          onTap: () => onChanged(!rememberMe),
-          child: Row(
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: 18,
-                height: 18,
-                decoration: BoxDecoration(
-                  color: rememberMe ? AppColors.tealAccent : AppColors.white,
-                  borderRadius: BorderRadius.circular(5),
-                  border: Border.all(
-                    color: rememberMe
-                        ? AppColors.tealAccent
-                        : AppColors.checkboxBorder,
-                    width: 1.5,
-                  ),
-                ),
-                child: rememberMe
-                    ? const Icon(
-                  Icons.check_rounded,
-                  size: 12,
-                  color: AppColors.white,
-                )
-                    : null,
-              ),
-              const SizedBox(width: 8),
-              const Text('Remember Me', style: AppTextStyles.checkboxLabel),
-            ],
-          ),
+        Image.asset(
+          'assets/images/mug_outline.png',
+          width: 92,
+          height: 85,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.high,
         ),
-        const Spacer(),
-        GestureDetector(
-          onTap: () {},
-          child: const Text('Forgot Password?', style: AppTextStyles.forgotPassword),
-        ),
-      ],
-    );
-  }
-}
 
-// ─── Login Button ─────────────────────────────────────────────────────────────
+        const SizedBox(height: 7),
 
-class _LoginButton extends StatelessWidget {
-  const _LoginButton();
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ScanScreen(),
-          ),
-        );
-      },
-      child: Container(
-        height: 54,
-        width: double.infinity,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF0DC4BD), Color(0xFF08A09A)],
-          ),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: const Center(
-          child: Text('Login', style: AppTextStyles.buttonText),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Or Divider ───────────────────────────────────────────────────────────────
-
-class _OrDivider extends StatelessWidget {
-  const _OrDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Container(
-            height: 1,
-            color: AppColors.dividerColor,
-          ),
-        ),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 14),
-          child: Text('Or Continue With', style: AppTextStyles.dividerText),
-        ),
-        Expanded(
-          child: Container(
-            height: 1,
-            color: AppColors.dividerColor,
+        const Text(
+          'CRAFTED FOR EVERY PERFECT SIP',
+          style: TextStyle(
+            color: Color(0xFF71665A),
+            fontSize: 9,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 2,
           ),
         ),
       ],
     );
   }
-}
-
-// ─── Social Buttons ───────────────────────────────────────────────────────────
-
-class _SocialButtons extends StatelessWidget {
-  const _SocialButtons();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        // Apple button
-        Expanded(
-          child: _SocialButton(
-            label: 'Apple',
-            icon: _AppleIcon(),
-            backgroundColor: AppColors.appleDark,
-            textStyle: AppTextStyles.socialTextLight,
-            borderColor: AppColors.appleDark,
-          ),
-        ),
-        const SizedBox(width: 14),
-        // Google button
-        Expanded(
-          child: _SocialButton(
-            label: 'Google',
-            icon: _GoogleIcon(),
-            backgroundColor: AppColors.white,
-            textStyle: AppTextStyles.socialText,
-            borderColor: AppColors.googleBorder,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SocialButton extends StatelessWidget {
-  final String label;
-  final Widget icon;
-  final Color backgroundColor;
-  final TextStyle textStyle;
-  final Color borderColor;
-
-  const _SocialButton({
-    required this.label,
-    required this.icon,
-    required this.backgroundColor,
-    required this.textStyle,
-    required this.borderColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {},
-      child: Container(
-        height: 50,
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: borderColor, width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            icon,
-            const SizedBox(width: 8),
-            Text(label, style: textStyle),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Apple Icon ───────────────────────────────────────────────────────────────
-
-class _AppleIcon extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return const Icon(
-      Icons.apple_rounded,
-      color: AppColors.white,
-      size: 20,
-    );
-  }
-}
-
-// ─── Google Icon ──────────────────────────────────────────────────────────────
-
-class _GoogleIcon extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 20,
-      height: 20,
-      child: CustomPaint(painter: _GoogleLogoPainter()),
-    );
-  }
-}
-
-class _GoogleLogoPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final cx = size.width / 2;
-    final cy = size.height / 2;
-    final r = size.width / 2;
-
-    // Draw G shape using arcs and rects
-    final red = Paint()..color = const Color(0xFFEA4335);
-    final blue = Paint()..color = const Color(0xFF4285F4);
-    final yellow = Paint()..color = const Color(0xFFFBBC05);
-    final green = Paint()..color = const Color(0xFF34A853);
-
-    // Background circle
-    canvas.drawCircle(Offset(cx, cy), r, Paint()..color = Colors.white);
-
-    final rect = Rect.fromCircle(center: Offset(cx, cy), radius: r * 0.85);
-
-    // Blue arc (right side)
-    canvas.drawArc(rect, -0.35, 1.45, false, Paint()
-      ..color = const Color(0xFF4285F4)
-      ..strokeWidth = r * 0.28
-      ..style = PaintingStyle.stroke);
-
-    // Green arc (bottom right)
-    canvas.drawArc(rect, 1.1, 1.1, false, Paint()
-      ..color = const Color(0xFF34A853)
-      ..strokeWidth = r * 0.28
-      ..style = PaintingStyle.stroke);
-
-    // Yellow arc (bottom left)
-    canvas.drawArc(rect, 2.2, 0.9, false, Paint()
-      ..color = const Color(0xFFFBBC05)
-      ..strokeWidth = r * 0.28
-      ..style = PaintingStyle.stroke);
-
-    // Red arc (top)
-    canvas.drawArc(rect, 3.1, 1.1, false, Paint()
-      ..color = const Color(0xFFEA4335)
-      ..strokeWidth = r * 0.28
-      ..style = PaintingStyle.stroke);
-
-    // White horizontal bar for the G
-    canvas.drawRect(
-      Rect.fromLTWH(cx, cy - r * 0.13, r * 0.78, r * 0.26),
-      Paint()..color = Colors.white,
-    );
-
-    // White center
-    canvas.drawCircle(Offset(cx, cy), r * 0.52, Paint()..color = Colors.white);
-
-    // Blue right notch indicator
-    canvas.drawRect(
-      Rect.fromLTWH(cx, cy - r * 0.13, r * 0.78, r * 0.26),
-      blue,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_GoogleLogoPainter old) => false;
 }

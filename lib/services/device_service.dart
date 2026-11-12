@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import 'classic_bluetooth_service.dart';
+import 'ble_bluetooth_service.dart';
 
 enum TemperatureMode {
   coolAndCozy(47, 'Cool & Cozy'),
@@ -26,14 +26,14 @@ class DeviceService extends ChangeNotifier {
     bluetoothService.addListener(_handleBluetoothUpdate);
   }
 
-  final ClassicBluetoothService bluetoothService;
-  ClassicDeviceModel? _selectedDevice;
+  final BleService bluetoothService;
+  BleDeviceModel? _selectedDevice;
 
-  ClassicDeviceModel? get selectedDevice => _selectedDevice;
+  BleDeviceModel? get selectedDevice => _selectedDevice;
 
   // Compatibility setter for the current Home screen. The updated screen
   // should use selectDevice() and must not assign state inside build().
-  set selectedDevice(ClassicDeviceModel? value) {
+  set selectedDevice(BleDeviceModel? value) {
     if (identical(_selectedDevice, value)) return;
     _selectedDevice = value;
   }
@@ -82,14 +82,14 @@ class DeviceService extends ChangeNotifier {
   }
 
   set isDeviceConnected(bool value) {
-    // Connection truth belongs to ClassicBluetoothService. This no-op setter
+    // Connection truth belongs to BleService. This no-op setter
     // only keeps the old Home screen compiling until it is replaced.
   }
 
-  void selectDevice(ClassicDeviceModel? device) {
+  void selectDevice(BleDeviceModel? device) {
     if (device != null &&
         !bluetoothService.connectedDevices.any(
-              (item) => item.address == device.address && item.isConnected,
+              (item) => item.deviceId == device.deviceId && item.isConnected,
         )) {
       return;
     }
@@ -102,7 +102,7 @@ class DeviceService extends ChangeNotifier {
     final selected = _selectedDevice;
     if (selected != null) {
       final matches = bluetoothService.connectedDevices.where(
-            (item) => item.address == selected.address && item.isConnected,
+            (item) => item.deviceId == selected.deviceId && item.isConnected,
       );
       _selectedDevice = matches.isEmpty ? null : matches.first;
     }
@@ -205,12 +205,31 @@ class DeviceService extends ChangeNotifier {
     );
   }
 
+  /// Sends any raw command to the selected BLE device.
+  ///
+  /// This is intentionally protocol-agnostic for the current BLE integration
+  /// stage. The connected firmware can use any command format; the BLE layer
+  /// only transports the bytes to the selected writable characteristic.
+  Future<bool> sendCommand(String command) async {
+    final device = _selectedDevice;
+
+    if (device == null || !device.isConnected) {
+      debugPrint('COMMAND NOT SENT: No connected selected BLE device');
+      return false;
+    }
+
+    return bluetoothService.sendCommand(
+      device,
+      command,
+    );
+  }
+
   Future<bool> disconnectSelected() async {
     final device = _selectedDevice;
     if (device == null) return true;
 
     final success = await bluetoothService.disconnectDevice(device);
-    if (_selectedDevice?.address == device.address) {
+    if (_selectedDevice?.deviceId == device.deviceId) {
       _selectedDevice = null;
       notifyListeners();
     }

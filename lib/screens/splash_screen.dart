@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'scan_screen.dart';
+import 'login_screen.dart';
+import 'package:provider/provider.dart';
+import '../services/auth_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -152,7 +155,24 @@ class _SplashScreenState extends State<SplashScreen>
   // NAVIGATION
   // ================================================================
 
-  void _goToNextScreen() {
+  Future<void> _goToNextScreen() async {
+    if (!mounted) return;
+    bool loggedIn;
+    try {
+      loggedIn = await context.read<AuthService>().restoreSession();
+    } catch (_) {
+      if (!mounted) return;
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        duration: const Duration(days: 1),
+        content: const Text('Unable to verify your saved login. Check your connection and retry.'),
+        action: SnackBarAction(label: 'Retry', onPressed: () {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          _goToNextScreen();
+        }),
+      ));
+      return;
+    }
     if (!mounted) return;
 
     // Restore normal system UI.
@@ -165,7 +185,7 @@ class _SplashScreenState extends State<SplashScreen>
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 650),
         reverseTransitionDuration: const Duration(milliseconds: 300),
-        pageBuilder: (_, __, ___) =>  ScanScreen(),
+        pageBuilder: (_, __, ___) => loggedIn ? ScanScreen() : const LoginScreen(),
         transitionsBuilder: (_, animation, __, child) {
           return FadeTransition(
             opacity: CurvedAnimation(

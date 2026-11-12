@@ -1,31 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:provider/provider.dart';
 
 import 'package:pro/screens/settings_screen.dart';
 
-import '../services/classic_bluetooth_service.dart';
+import '../services/ble_bluetooth_service.dart';
 import '../services/device_service.dart';
 import '../services/theme_service.dart';
-import '../utils/permission_manager.dart';
+// import '../utils/permission_manager.dart';
 import 'home.dart';
 
-/// Garam Mug Bluetooth connection screen.
-///
-/// Behaviour:
-/// - Never starts discovery automatically when the screen opens.
-/// - Loads Android's already-paired devices immediately.
-/// - Shows an existing live connection first.
-/// - A paired mug stays visible even when it is not discoverable.
-/// - There is exactly ONE primary "Scan" action.
-/// - Tapping a paired device connects directly through ClassicBluetoothService.
-/// - Tapping an already-connected device opens Home without reconnecting.
-/// - Navigation away from this screen never deliberately disconnects the mug.
+/// BLE device connection screen.
 ///
 /// IMPORTANT:
-/// ClassicBluetoothService must be a single app-level/shared instance.
-/// Do not create a new service every time this screen is opened.
+/// - Scans ALL BLE devices. There is no Garam Mug name filter.
+/// - There is no Classic Bluetooth / bonded-device logic.
+/// - Any BLE device can be selected and connected.
+/// - GATT services and writable characteristics are discovered by BleService.
+/// - The BLE service can then send raw commands to the selected device.
+/// - Leaving this screen does not deliberately disconnect the device.
+///
+/// This screen intentionally remains generic while BLE connectivity and
+/// raw command transport are being tested with different ESP32 firmware.
 class ScanScreen extends StatefulWidget {
   const ScanScreen({super.key});
 
@@ -33,98 +30,67 @@ class ScanScreen extends StatefulWidget {
   State<ScanScreen> createState() => _ScanScreenState();
 }
 
-class _ScanScreenState extends State<ScanScreen>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _scanAnimation;
+class _ScanScreenState extends State<ScanScreen> {
 
-  String? _connectingAddress;
-  bool _loadingPairedDevices = true;
+  String? _connectingDeviceId;
+  bool _loadingInitialState = true;
   bool _checkingPermissions = false;
 
   @override
   void initState() {
     super.initState();
 
-    _scanAnimation = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    );
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadInitialState();
     });
-  }
-
-  @override
-  void dispose() {
-    _scanAnimation.dispose();
-    super.dispose();
   }
 
   Future<void> _loadInitialState() async {
     if (!mounted) return;
 
     setState(() {
-      _loadingPairedDevices = true;
+      _loadingInitialState = true;
       _checkingPermissions = true;
     });
 
     try {
-      final granted = await PermissionManager.requestAll(context);
-
-      if (!mounted) return;
-
-      if (!granted) return;
-
-      final bluetooth = context.read<ClassicBluetoothService>();
-
-// Load Android's persistent paired-device list first.
-// This does NOT start Bluetooth discovery.
-      final loaded = await bluetooth.getBondedDevices();
-
-      if (!mounted || !loaded) return;
-
-// Load the address of the last Garam Mug that was connected.
+      final bluetooth = context.read<BleService>();
+      // Load the saved BLE remoteId, but do not start a normal scan.
       await bluetooth.loadLastConnectedDevice();
 
       if (!mounted) return;
 
-// Automatically reconnect to the saved Garam Mug.
-// This uses direct Bluetooth connection.
-// It does NOT start discovery.
+      // Preserve the previous app behaviour: if a saved BLE device is
+      // available and can be reconnected, open Home automatically.
       final reconnected =
       await bluetooth.reconnectLastConnectedDevice();
 
+      if (!mounted || !reconnected) return;
+
+      final deviceId = bluetooth.lastConnectedDeviceId;
+
+      if (deviceId == null || deviceId.isEmpty) return;
+
+      final model = bluetooth.connectedDeviceById(deviceId);
+
+      if (model == null) return;
+
+      final deviceService = context.read<DeviceService>();
+      deviceService.selectDevice(model);
+
+      await bluetooth.stopDiscovery();
+
       if (!mounted) return;
 
-// If automatic reconnect succeeded, select the device and open Home.
-      if (reconnected) {
-        final address = bluetooth.lastConnectedDeviceAddress;
-
-        if (address != null) {
-          final model =
-          bluetooth.connectedDeviceByAddress(address);
-
-          if (model != null) {
-            final deviceService = context.read<DeviceService>();
-            deviceService.selectDevice(model);
-
-            await bluetooth.stopDiscovery();
-
-            if (!mounted) return;
-
-            await Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => HomeScreen(),
-              ),
-            );
-          }
-        }
-      }
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => HomeScreen(),
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() {
-          _loadingPairedDevices = false;
+          _loadingInitialState = false;
           _checkingPermissions = false;
         });
       }
@@ -132,20 +98,18 @@ class _ScanScreenState extends State<ScanScreen>
   }
 
   Future<void> _scanForNewMugs() async {
-    if (_connectingAddress != null) return;
+    if (_connectingDeviceId != null) return;
 
-    final bluetooth = context.read<ClassicBluetoothService>();
+    final bluetooth = context.read<BleService>();
 
-    if (bluetooth.isDiscovering) return;
+    if (bluetooth.isScanning) return;
 
     HapticFeedback.lightImpact();
 
     setState(() => _checkingPermissions = true);
 
     try {
-      final granted = await PermissionManager.requestAll(context);
 
-      if (!mounted || !granted) return;
 
       final success = await bluetooth.startDiscovery();
 
@@ -161,91 +125,55 @@ class _ScanScreenState extends State<ScanScreen>
     }
   }
 
-  bool _isGaramMug(BluetoothDevice device) {
-    final name = device.name?.trim().toLowerCase() ?? '';
+  String _deviceName(BleDeviceModel model) {
+    final name = model.name.trim();
 
-    if (name.isEmpty) return false;
-
-    return name.startsWith('garam_mug') ||
-        name.startsWith('garam mug') ||
-        name.startsWith('device_1');
-  }
-
-  String _deviceName(BluetoothDevice device) {
-    final name = device.name?.trim();
-
-    if (name != null && name.isNotEmpty) {
+    if (name.isNotEmpty) {
       return name;
     }
 
-    return 'Garam Mug';
+    return 'Unknown BLE Device';
   }
 
-  ClassicDeviceModel? _connectedModel(
-      ClassicBluetoothService service,
-      String address,
+  BleDeviceModel? _connectedModel(
+      BleService service,
+      String deviceId,
       ) {
+    return service.connectedDeviceById(deviceId);
+  }
+
+  List<BleDeviceModel> _visibleDevices(BleService service) {
+    final byId = <String, BleDeviceModel>{};
+
+    // Connected devices remain visible after scanning stops.
     for (final model in service.connectedDevices) {
-      if (model.address == address &&
-          model.isConnected &&
-          model.connection?.isConnected == true) {
-        return model;
+      if (model.isConnected) {
+        byId[model.deviceId] = model;
       }
     }
 
-    return null;
-  }
+    // Scan results are converted into the same model used by DeviceService.
+    for (final result in service.scanResults) {
+      final id = result.device.remoteId.str;
 
-  bool _isBonded(
-      ClassicBluetoothService service,
-      String address,
-      ) {
-    return service.bondedDevices.any(
-          (device) => device.address == address,
-    );
-  }
+      final existing = byId[id];
 
-  List<BluetoothDevice> _visibleDevices(
-      ClassicBluetoothService service,
-      ) {
-    final byAddress = <String, BluetoothDevice>{};
-
-    // Priority 1: live connections.
-    for (final model in service.connectedDevices) {
-      if (model.isConnected && _isGaramMug(model.device)) {
-        byAddress[model.address] = model.device;
+      if (existing != null) {
+        continue;
       }
+
+      byId[id] = BleDeviceModel(
+        device: result.device,
+        name: service.deviceNameFromScanResult(result),
+        deviceId: id,
+      );
     }
 
-    // Priority 2: Android bonded devices.
-    for (final device in service.bondedDevices) {
-      if (_isGaramMug(device)) {
-        byAddress[device.address] = device;
-      }
-    }
-
-    // Priority 3: explicit discovery results.
-    for (final result in service.discoveredDevices) {
-      if (_isGaramMug(result.device)) {
-        byAddress[result.device.address] = result.device;
-      }
-    }
-
-    final devices = byAddress.values.toList();
+    final devices = byId.values.toList();
 
     devices.sort((a, b) {
-      final aConnected = _connectedModel(service, a.address) != null;
-      final bConnected = _connectedModel(service, b.address) != null;
-
-      if (aConnected != bConnected) {
-        return aConnected ? -1 : 1;
-      }
-
-      final aBonded = _isBonded(service, a.address);
-      final bBonded = _isBonded(service, b.address);
-
-      if (aBonded != bBonded) {
-        return aBonded ? -1 : 1;
+      if (a.isConnected != b.isConnected) {
+        return a.isConnected ? -1 : 1;
       }
 
       return _deviceName(a).toLowerCase().compareTo(
@@ -257,59 +185,62 @@ class _ScanScreenState extends State<ScanScreen>
   }
 
   Future<void> _connectOrOpen(
-      BluetoothDevice device,
-      ClassicBluetoothService bluetooth,
+      BleDeviceModel model,
+      BleService bluetooth,
       ) async {
-    if (_connectingAddress != null) return;
+    if (_connectingDeviceId != null) return;
 
     HapticFeedback.mediumImpact();
 
-    final address = device.address;
+    final deviceId = model.deviceId;
 
-    setState(() => _connectingAddress = address);
+    setState(() => _connectingDeviceId = deviceId);
 
     try {
-      // Already connected: reuse the existing connection.
-      var model = _connectedModel(bluetooth, address);
+      // Already connected: reuse the existing GATT connection.
+      final existing = _connectedModel(bluetooth, deviceId);
 
-      if (model != null) {
-        await _openHome(model);
+      if (existing != null) {
+        await _openHome(existing);
         return;
       }
 
-      // Paired devices use direct connection. No discovery is required.
-      final success = await bluetooth.connectDevice(device);
+      // BleService.connectBluetoothDevice() accepts BluetoothDevice directly.
+      // This works for devices obtained from the scan screen.
+      final success = await bluetooth.connectBluetoothDevice(
+        model.device,
+        name: model.name,
+      );
 
       if (!mounted) return;
 
-      model = _connectedModel(bluetooth, address);
+      final connectedModel = _connectedModel(bluetooth, deviceId);
 
-      if (!success || model == null) {
+      if (!success || connectedModel == null) {
         _showConnectionError(
           bluetooth.lastError ??
-              'Unable to connect to ${_deviceName(device)}.',
-          device,
+              'Unable to connect to ${_deviceName(model)}.',
+          model,
         );
         return;
       }
 
-      await _openHome(model);
+      await _openHome(connectedModel);
     } finally {
       if (mounted) {
-        setState(() => _connectingAddress = null);
+        setState(() => _connectingDeviceId = null);
       }
     }
   }
 
-  Future<void> _openHome(ClassicDeviceModel model) async {
+  Future<void> _openHome(BleDeviceModel model) async {
     if (!mounted) return;
 
     final deviceService = context.read<DeviceService>();
     deviceService.selectDevice(model);
 
-    final bluetooth = context.read<ClassicBluetoothService>();
+    final bluetooth = context.read<BleService>();
 
-    // Stop discovery before controlling the mug.
     await bluetooth.stopDiscovery();
 
     if (!mounted) return;
@@ -321,12 +252,12 @@ class _ScanScreenState extends State<ScanScreen>
     );
 
     // Do NOT scan or disconnect when returning from Home.
-    // The shared Bluetooth service continues owning the connection.
+    // The shared BLE service continues to own the connection.
   }
 
   void _showConnectionError(
       String message,
-      BluetoothDevice device,
+      BleDeviceModel device,
       ) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -340,7 +271,7 @@ class _ScanScreenState extends State<ScanScreen>
             onPressed: () {
               _connectOrOpen(
                 device,
-                context.read<ClassicBluetoothService>(),
+                context.read<BleService>(),
               );
             },
           ),
@@ -362,7 +293,7 @@ class _ScanScreenState extends State<ScanScreen>
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeService>();
-    final bluetooth = context.watch<ClassicBluetoothService>();
+    final bluetooth = context.watch<BleService>();
 
     final dark = theme.isDarkMode;
     final colors = _Colors(dark);
@@ -370,32 +301,22 @@ class _ScanScreenState extends State<ScanScreen>
     final devices = _visibleDevices(bluetooth);
 
     final scanning =
-        bluetooth.isDiscovering || _checkingPermissions;
+        bluetooth.isScanning || _checkingPermissions;
 
     final connected = devices.where(
-          (device) => _connectedModel(
-        bluetooth,
-        device.address,
-      ) != null,
-    );
-
-    final paired = devices.where(
-          (device) =>
-      _connectedModel(bluetooth, device.address) == null &&
-          _isBonded(bluetooth, device.address),
+          (device) => device.isConnected,
     );
 
     final nearby = devices.where(
-          (device) =>
-      _connectedModel(bluetooth, device.address) == null &&
-          !_isBonded(bluetooth, device.address),
+          (device) => !device.isConnected,
     );
 
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(
-        backgroundColor: colors.surface,
+        backgroundColor: colors.background,
         foregroundColor: colors.text,
+        systemOverlayStyle: dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         automaticallyImplyLeading: false,
@@ -437,7 +358,6 @@ class _ScanScreenState extends State<ScanScreen>
                   colors: colors,
                   scanning: scanning,
                   hasConnected: connected.isNotEmpty,
-                  deviceCount: devices.length,
                 ),
               ),
 
@@ -451,13 +371,12 @@ class _ScanScreenState extends State<ScanScreen>
                   ),
                 ),
 
-              if (_loadingPairedDevices)
+              if (_loadingInitialState)
                 SliverToBoxAdapter(
                   child: _LoadingCard(colors: colors),
                 ),
 
-              if (!_loadingPairedDevices &&
-                  devices.isEmpty)
+              if (!_loadingInitialState && devices.isEmpty)
                 SliverFillRemaining(
                   hasScrollBody: false,
                   child: _EmptyState(
@@ -470,7 +389,7 @@ class _ScanScreenState extends State<ScanScreen>
                   SliverToBoxAdapter(
                     child: _SectionHeader(
                       colors: colors,
-                      title: 'CONNECTED',
+                      title: 'Connected mugs',
                       subtitle: 'Ready to use',
                       icon: Icons.check_circle_rounded,
                     ),
@@ -479,31 +398,8 @@ class _ScanScreenState extends State<ScanScreen>
                     devices: connected,
                     service: bluetooth,
                     colors: colors,
-                    connectingAddress: _connectingAddress,
+                    connectingDeviceId: _connectingDeviceId,
                     status: _DeviceStatus.connected,
-                    isBonded: _isBonded,
-                    connectedModel: _connectedModel,
-                    deviceName: _deviceName,
-                    onTap: _connectOrOpen,
-                  ),
-                ],
-
-                if (paired.isNotEmpty) ...[
-                  SliverToBoxAdapter(
-                    child: _SectionHeader(
-                      colors: colors,
-                      title: 'MY GARAM MUGS',
-                      subtitle: 'Paired with this phone',
-                      icon: Icons.link_rounded,
-                    ),
-                  ),
-                  _DeviceSliver(
-                    devices: paired,
-                    service: bluetooth,
-                    colors: colors,
-                    connectingAddress: _connectingAddress,
-                    status: _DeviceStatus.paired,
-                    isBonded: _isBonded,
                     connectedModel: _connectedModel,
                     deviceName: _deviceName,
                     onTap: _connectOrOpen,
@@ -514,8 +410,8 @@ class _ScanScreenState extends State<ScanScreen>
                   SliverToBoxAdapter(
                     child: _SectionHeader(
                       colors: colors,
-                      title: 'NEARBY',
-                      subtitle: 'Found during this scan',
+                      title: 'Nearby devices',
+                      subtitle: 'Select a device to connect',
                       icon: Icons.bluetooth_searching_rounded,
                     ),
                   ),
@@ -523,9 +419,8 @@ class _ScanScreenState extends State<ScanScreen>
                     devices: nearby,
                     service: bluetooth,
                     colors: colors,
-                    connectingAddress: _connectingAddress,
+                    connectingDeviceId: _connectingDeviceId,
                     status: _DeviceStatus.nearby,
-                    isBonded: _isBonded,
                     connectedModel: _connectedModel,
                     deviceName: _deviceName,
                     onTap: _connectOrOpen,
@@ -541,7 +436,7 @@ class _ScanScreenState extends State<ScanScreen>
         ),
       ),
 
-      // EXACTLY ONE primary scan button on the entire screen.
+      // Exactly one primary scan button.
       bottomNavigationBar: _ScanAction(
         colors: colors,
         scanning: scanning,
@@ -556,29 +451,21 @@ class _DeviceSliver extends StatelessWidget {
     required this.devices,
     required this.service,
     required this.colors,
-    required this.connectingAddress,
+    required this.connectingDeviceId,
     required this.status,
-    required this.isBonded,
     required this.connectedModel,
     required this.deviceName,
     required this.onTap,
   });
 
-  final Iterable<BluetoothDevice> devices;
-  final ClassicBluetoothService service;
+  final Iterable<BleDeviceModel> devices;
+  final BleService service;
   final _Colors colors;
-  final String? connectingAddress;
+  final String? connectingDeviceId;
   final _DeviceStatus status;
-  final bool Function(ClassicBluetoothService, String) isBonded;
-  final ClassicDeviceModel? Function(
-      ClassicBluetoothService,
-      String,
-      ) connectedModel;
-  final String Function(BluetoothDevice) deviceName;
-  final Future<void> Function(
-      BluetoothDevice,
-      ClassicBluetoothService,
-      ) onTap;
+  final BleDeviceModel? Function(BleService, String) connectedModel;
+  final String Function(BleDeviceModel) deviceName;
+  final Future<void> Function(BleDeviceModel, BleService) onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -591,17 +478,16 @@ class _DeviceSliver extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(height: 10),
         itemBuilder: (_, index) {
           final device = list[index];
-          final model = connectedModel(service, device.address);
+          final model = connectedModel(service, device.deviceId);
 
           return _DeviceCard(
             colors: colors,
-            device: device,
             status: status,
             statusText: _statusText(status),
             battery: model?.battery,
-            busy: connectingAddress == device.address,
-            disabled: connectingAddress != null &&
-                connectingAddress != device.address,
+            busy: connectingDeviceId == device.deviceId,
+            disabled: connectingDeviceId != null &&
+                connectingDeviceId != device.deviceId,
             name: deviceName(device),
             onTap: () => onTap(device, service),
           );
@@ -614,228 +500,114 @@ class _DeviceSliver extends StatelessWidget {
     switch (status) {
       case _DeviceStatus.connected:
         return 'Connected';
-      case _DeviceStatus.paired:
-        return 'Paired • Not connected';
       case _DeviceStatus.nearby:
-        return 'Available nearby';
+        return 'Ready to connect';
     }
   }
 }
 
 class _AppTitle extends StatelessWidget {
   const _AppTitle({required this.colors});
-
   final _Colors colors;
 
   @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [colors.primaryDark, colors.primary],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(13),
-          ),
-          child: const Icon(
-            Icons.coffee_rounded,
-            color: Colors.white,
-            size: 21,
-          ),
-        ),
-        const SizedBox(width: 11),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Garam Mug',
-              style: TextStyle(
-                color: colors.text,
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -.3,
-              ),
-            ),
-            Text(
-              'Smart temperature control',
-              style: TextStyle(
-                color: colors.muted,
-                fontSize: 10.5,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => Row(
+    children: [
+      Image.asset('assets/images/ic_mug_amber.png',
+          width: 32, height: 32, excludeFromSemantics: true),
+      const SizedBox(width: 9),
+      Flexible(
+        child: Text('Garam Mug',
+            style: TextStyle(color: colors.text, fontWeight: FontWeight.w800)),
+      ),
+    ],
+  );
 }
 
 class _Hero extends StatelessWidget {
-  const _Hero({
-    required this.colors,
-    required this.scanning,
-    required this.hasConnected,
-    required this.deviceCount,
-  });
+  const _Hero({required this.colors, required this.scanning,
+    required this.hasConnected});
 
   final _Colors colors;
   final bool scanning;
   final bool hasConnected;
-  final int deviceCount;
 
   @override
-  Widget build(BuildContext context) {
-    final title = scanning
-        ? 'Looking for your mug…'
-        : hasConnected
-        ? 'Your mug is ready'
-        : deviceCount > 0
-        ? 'Your mug is here'
-        : 'Connect your Garam Mug';
-
-    final subtitle = scanning
-        ? 'Searching nearby Bluetooth devices'
-        : hasConnected
-        ? 'Connected and ready to keep your drink warm'
-        : deviceCount > 0
-        ? 'Select a mug below to continue'
-        : 'Paired mugs appear here automatically';
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 18, 16, 14),
-      padding: const EdgeInsets.all(19),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [colors.primaryDark, colors.primary],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(18, 26, 18, 20),
+    child: Column(
+      children: [
+        Text(hasConnected ? 'Your mug is connected' : 'Connect your mug',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: colors.text, fontSize: 26,
+                fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        Text(
+          hasConnected ? 'Tap your mug to open its controls.'
+              : 'Turn on your mug and keep it nearby.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: colors.muted, fontSize: 14),
         ),
-        borderRadius: BorderRadius.circular(25),
-        boxShadow: [
-          BoxShadow(
-            color: colors.primary.withOpacity(.20),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
+        const SizedBox(height: 20),
+        _ScanRadar(scanning: scanning, colors: colors),
+      ],
+    ),
+  );
+}
+
+class _ScanRadar extends StatelessWidget {
+  const _ScanRadar({required this.scanning, required this.colors});
+  final bool scanning;
+  final _Colors colors;
+
+  @override
+  Widget build(BuildContext context) => SizedBox.square(
+    dimension: 200,
+    child: Stack(
+      alignment: Alignment.center,
+      children: [
+        for (final size in [200.0, 152.0, 106.0])
           Container(
-            width: 58,
-            height: 58,
+            width: size, height: size,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(.14),
               shape: BoxShape.circle,
-            ),
-            child: scanning
-                ? const _ScanPulseIcon()
-                : Icon(
-              hasConnected
-                  ? Icons.coffee_rounded
-                  : Icons.bluetooth_rounded,
-              color: Colors.white,
-              size: 28,
+              color: _Colors.amber.withOpacity(colors.dark ? .12 : .09),
             ),
           ),
-          const SizedBox(width: 15),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(.78),
-                    fontSize: 11.5,
-                    height: 1.35,
-                  ),
-                ),
-              ],
+        Container(
+          width: 62, height: 62,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            color: _Colors.amber, shape: BoxShape.circle,
+          ),
+          child: Image.asset('assets/images/ic_bluetooth.png',
+              width: 34, height: 34, color: _Colors.navy,
+              excludeFromSemantics: true),
+        ),
+        if (scanning)
+          SizedBox.square(
+            dimension: 73,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5,
+              color: colors.warmInk,
+              semanticsLabel: 'Scanning for nearby devices',
             ),
           ),
-        ],
-      ),
-    );
-  }
+      ],
+    ),
+  );
 }
 
-class _ScanPulseIcon extends StatefulWidget {
-  const _ScanPulseIcon();
-
-  @override
-  State<_ScanPulseIcon> createState() => _ScanPulseIconState();
-}
-
-class _ScanPulseIconState extends State<_ScanPulseIcon>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController controller;
-
-  @override
-  void initState() {
-    super.initState();
-    controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return RotationTransition(
-      turns: controller,
-      child: const Icon(
-        Icons.bluetooth_searching_rounded,
-        color: Colors.white,
-        size: 28,
-      ),
-    );
-  }
-}
-
-enum _DeviceStatus {
-  connected,
-  paired,
-  nearby,
-}
+enum _DeviceStatus { connected, nearby }
 
 class _DeviceCard extends StatelessWidget {
   const _DeviceCard({
-    required this.colors,
-    required this.device,
-    required this.status,
-    required this.statusText,
-    required this.battery,
-    required this.busy,
-    required this.disabled,
-    required this.name,
-    required this.onTap,
+    required this.colors, required this.status, required this.statusText,
+    required this.battery, required this.busy, required this.disabled,
+    required this.name, required this.onTap,
   });
 
   final _Colors colors;
-  final BluetoothDevice device;
   final _DeviceStatus status;
   final String statusText;
   final int? battery;
@@ -847,218 +619,74 @@ class _DeviceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final connected = status == _DeviceStatus.connected;
-    final paired = status == _DeviceStatus.paired;
-
-    final accent = connected
-        ? colors.green
-        : paired
-        ? colors.primary
-        : colors.muted;
-
-    final soft = connected
-        ? colors.greenSoft
-        : paired
-        ? colors.primarySoft
-        : colors.neutralSoft;
-
-    return AnimatedOpacity(
-      opacity: disabled ? .48 : 1,
-      duration: const Duration(milliseconds: 180),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: disabled || busy ? null : onTap,
-          borderRadius: BorderRadius.circular(20),
-          child: Ink(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: colors.surface,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: connected
-                    ? colors.green.withOpacity(.38)
-                    : colors.border,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(
-                    colors.dark ? .12 : .045,
-                  ),
-                  blurRadius: 16,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: soft,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Icon(
-                    connected
-                        ? Icons.coffee_rounded
-                        : Icons.bluetooth_rounded,
-                    color: accent,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 13),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: colors.text,
-                                fontSize: 14.5,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                          if (connected) ...[
-                            const SizedBox(width: 7),
-                            _StatusPill(
-                              label: 'CONNECTED',
-                              color: colors.green,
-                              background: colors.greenSoft,
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        statusText,
-                        style: TextStyle(
-                          color: accent,
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              device.address,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: colors.muted,
-                                fontSize: 9.5,
-                              ),
-                            ),
-                          ),
-                          if (battery != null) ...[
-                            Text(
-                              '  •  ',
-                              style: TextStyle(
-                                color: colors.muted,
-                                fontSize: 9,
-                              ),
-                            ),
-                            Icon(
-                              Icons.battery_std_rounded,
-                              size: 12,
-                              color: colors.muted,
-                            ),
-                            const SizedBox(width: 2),
-                            Text(
-                              '$battery%',
-                              style: TextStyle(
-                                color: colors.muted,
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                SizedBox(
-                  height: 38,
-                  child: FilledButton(
-                    onPressed: disabled || busy ? null : onTap,
-                    style: FilledButton.styleFrom(
-                      backgroundColor:
-                      connected ? colors.green : colors.primary,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: busy
-                        ? const SizedBox(
-                      width: 17,
-                      height: 17,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                        : Text(
-                      connected ? 'Open' : 'Connect',
-                      style: const TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+    final action = FilledButton(
+      onPressed: busy || disabled ? null : onTap,
+      style: FilledButton.styleFrom(
+        backgroundColor: colors.primary,
+        foregroundColor: colors.onPrimary,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        minimumSize: const Size(0, 44),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      child: busy
+          ? SizedBox.square(
+        dimension: 17,
+        child: CircularProgressIndicator(
+          color: colors.text, strokeWidth: 2, semanticsLabel: 'Connecting',
+        ),
+      )
+          : Text(connected ? 'Open' : 'Connect'),
+    );
+    final info = Row(
+      children: [
+        Container(
+          width: 38, height: 38,
+          decoration: BoxDecoration(
+            color: colors.neutralSoft, borderRadius: BorderRadius.circular(10),
+          ),
+          child: Center(
+            child: Image.asset('assets/images/ic_bluetooth.png',
+                width: 24, height: 24, color: colors.text,
+                excludeFromSemantics: true),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({
-    required this.label,
-    required this.color,
-    required this.background,
-  });
-
-  final String label;
-  final Color color;
-  final Color background;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 7,
-        vertical: 3,
-      ),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(30),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 7.5,
-          fontWeight: FontWeight.w900,
-          letterSpacing: .55,
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(name, maxLines: 2, overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: colors.text, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 3),
+              Text(
+                connected && battery != null ? '$statusText · $battery%' : statusText,
+                style: TextStyle(color: colors.muted, fontSize: 12),
+              ),
+            ],
+          ),
         ),
+      ],
+    );
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border.all(color: colors.border),
+        borderRadius: BorderRadius.circular(17),
+        boxShadow: colors.dark ? null : const [
+          BoxShadow(color: Color(0x0D14243B), blurRadius: 10, offset: Offset(0, 3)),
+        ],
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 250 || MediaQuery.textScalerOf(context).scale(14) > 20) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [info, const SizedBox(height: 8), action],
+            );
+          }
+          return Row(children: [Expanded(child: info), const SizedBox(width: 8), action]);
+        },
       ),
     );
   }
@@ -1143,7 +771,7 @@ class _LoadingCard extends StatelessWidget {
           const SizedBox(width: 13),
           Expanded(
             child: Text(
-              'Checking paired Garam Mugs…',
+              'Preparing BLE…',
               style: TextStyle(
                 color: colors.text,
                 fontSize: 12,
@@ -1191,8 +819,8 @@ class _EmptyState extends StatelessWidget {
           const SizedBox(height: 20),
           Text(
             scanning
-                ? 'Finding your Garam Mug'
-                : 'No Garam Mug connected',
+                ? 'Finding nearby BLE devices'
+                : 'No BLE device found',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: colors.text,
@@ -1203,8 +831,8 @@ class _EmptyState extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             scanning
-                ? 'Keep your mug switched on and nearby.'
-                : 'If this is your first connection, use the Scan button below.',
+                ? 'Turn on the BLE device and keep it nearby.'
+                : 'Use the Scan button below to find nearby BLE devices.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: colors.muted,
@@ -1298,33 +926,33 @@ class _ScanAction extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
         decoration: BoxDecoration(
-          color: colors.surface,
+          color: colors.background,
           border: Border(
             top: BorderSide(color: colors.border),
           ),
         ),
         child: SizedBox(
           height: 50,
-          child: FilledButton.icon(
+          child: OutlinedButton.icon(
             onPressed: onPressed,
             icon: scanning
-                ? const SizedBox(
+                ? SizedBox(
               width: 18,
               height: 18,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: Colors.white,
+                color: colors.text,
               ),
             )
                 : const Icon(
               Icons.bluetooth_searching_rounded,
             ),
             label: Text(
-              scanning ? 'Scanning nearby devices…' : 'Scan for a new mug',
+              scanning ? 'Scanning nearby devices…' : 'Scan again',
             ),
-            style: FilledButton.styleFrom(
-              backgroundColor: colors.primary,
-              foregroundColor: Colors.white,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: colors.text,
+              side: BorderSide(color: colors.text),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(15),
               ),
@@ -1340,38 +968,35 @@ class _Colors {
   _Colors(this.dark);
 
   final bool dark;
+  static const navy = Color(0xFF14243B);
+  static const amber = Color(0xFFF59E0B);
+  Color get onPrimary => dark ? navy : Colors.white;
+  Color get warmInk => dark ? amber : const Color(0xFF9A4C06);
 
   Color get background =>
-      dark ? const Color(0xFF080D18) : const Color(0xFFF5F8FF);
+      dark ? const Color(0xFF0B1422) : const Color(0xFFFFF8EE);
 
   Color get surface =>
-      dark ? const Color(0xFF111827) : Colors.white;
+      dark ? const Color(0xFF14243B) : Colors.white;
 
-  Color get primary => const Color(0xFF2563EB);
-
-  Color get primaryDark => const Color(0xFF1D4ED8);
+  Color get primary => dark ? amber : navy;
 
   Color get primarySoft =>
-      dark ? const Color(0xFF172554) : const Color(0xFFEFF6FF);
+      dark ? const Color(0xFF3A2A19) : const Color(0xFFF9EDDD);
 
   Color get neutralSoft =>
-      dark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9);
+      dark ? const Color(0xFF20344C) : const Color(0xFFF6EFE6);
 
   Color get text =>
-      dark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A);
+      dark ? const Color(0xFFFFF8EE) : const Color(0xFF14243B);
 
   Color get muted =>
-      dark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+      dark ? const Color(0xFFB3BFCC) : const Color(0xFF515F70);
 
   Color get border =>
-      dark ? const Color(0xFF263348) : const Color(0xFFE2E8F0);
+      dark ? const Color(0xFF2B4058) : const Color(0xFFE8DED1);
 
-  Color get green => const Color(0xFF16A34A);
-
-  Color get greenSoft =>
-      dark ? const Color(0xFF052E16) : const Color(0xFFF0FDF4);
-
-  Color get red => const Color(0xFFEF4444);
+  Color get red => dark ? const Color(0xFFFCA5A5) : const Color(0xFFB91C1C);
 
   Color get redSoft =>
       dark ? const Color(0xFF450A0A) : const Color(0xFFFEF2F2);
